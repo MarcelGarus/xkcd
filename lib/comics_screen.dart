@@ -57,9 +57,9 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       alignment: Alignment.bottomCenter,
       child: Transform.translate(
         offset: zoomBarOffset,
-        child: FocusBar(
-          currentFocus: currentFocus,
-          numFocuses: 3,
+        child: ProgressNavigation(
+          progress: currentFocus,
+          maxProgress: 3,
           onChange: (newFocus) => setState(() {
             currentFocus = newFocus;
           }),
@@ -68,11 +68,15 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       )
     );
 
-    final focusSuggestion = Suggestion(
-      isShown: focusesExist && zoomMode == 0.0,
-      icon: Icon(Icons.view_carousel, color: Colors.white),
-      label: Text('View comic', style: TextStyle(color: Colors.white)),
-      onTap: enterZoomMode,
+    final focusSuggestion = Container(
+      alignment: Alignment.bottomCenter,
+      padding: EdgeInsets.only(bottom: 56.0),
+      child: Suggestion(
+        isShown: focusesExist && zoomMode == 0.0,
+        icon: Icon(Icons.view_carousel, color: Colors.white),
+        label: Text('View comic', style: TextStyle(color: Colors.white)),
+        onTap: enterZoomMode,
+      )
     );
 
     return Stack(
@@ -147,12 +151,12 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
 
 
 
-/// A suggestion chip displayed at the bottom of the screen. You can provide an
-/// [icon] and a [label], as well as an [onTap] listener. Depending on whether
-/// you set [isShown] to true or false, the suggestion sets its padding so as
-/// to disappear behind the bottom bar or not.
-/// If you change [isShown], the suggestion jumpily animates to its new
-/// position.
+/// A suggestion chip to be displayed at the bottom of the screen.
+/// 
+/// You can provide an [icon] and a [label] as well as an [onTap] callback.
+/// Also, you can change the [isShown] parameter to show or hide the chip.
+/// IMPORTANT: This widget expects to be placed at the buttom of the enclosing
+/// widget, as it doesn't really "hides" but moves down.
 class Suggestion extends StatefulWidget {
   Suggestion({
     @required this.isShown,
@@ -161,9 +165,17 @@ class Suggestion extends StatefulWidget {
     @required this.onTap
   });
   
+  /// Whether the suggestion chip is shown. If you change this, it jumpily
+  /// animates to its new position.
   final bool isShown;
+
+  /// The icon.
   final Widget icon;
+
+  /// The label.
   final Widget label;
+
+  /// A callback to be called if the suggestion is tapped.
   final VoidCallback onTap;
 
   @override
@@ -207,9 +219,8 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     tick();
 
-    return Container(
-      alignment: Alignment.bottomCenter,
-      padding: EdgeInsets.only(bottom: value.clamp(0.0, double.infinity) * 56),
+    return Transform.translate(
+      offset: Offset(0.0, 56 * (1.0 - value)),
       child: ActionChip(
         avatar: widget.icon,
         label: widget.label,
@@ -225,24 +236,46 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
 
 
 
+/// A widget to be used as an alternative for the bottom app bar for navigating
+/// through multiple focus areas. Includes:
+/// * A button to close the app.
+/// * A discrete slider for seeing your progress as well as quickly navigating
+///   multiple steps at once.
+/// * A numeric indicator for the current progress.
+/// * Buttons for navigating to the previous and next step.
+///   - If at the first comic, the previous button is not displayed.
+///   - If at the last comic, the next button morphes into a close button. TODO animate!
+/// 
+/// You just provide the [progress], the [maxProgress] as well as callbacks
+/// to be notified [onChange] and [onClose].
+/// IMPORTANT: Notice that this widget does not hold any state itself but
+/// expects to be recreated every time the value changes with a different
+/// [progress].
+typedef ProgressChangeCallback(int index);
 
-typedef FocusBarChangeCallback(int index);
-
-class FocusBar extends StatelessWidget {
-  FocusBar({
-    this.currentFocus,
-    this.numFocuses,
-    this.onChange,
-    this.onClose
+class ProgressNavigation extends StatelessWidget {
+  ProgressNavigation({
+    @required this.progress,
+    @required this.maxProgress,
+    @required this.onChange,
+    @required this.onClose
   });
 
-  final int currentFocus;
-  final int numFocuses;
-  bool get isFirstFocus => currentFocus <= 0.0;
-  bool get isLastFocus => currentFocus >= numFocuses - 1;
+  /// The current progress.
+  final int progress;
 
-  final FocusBarChangeCallback onChange;
+  /// The maximum progress.
+  final int maxProgress;
+
+  /// Callback being called whenever the progress changes.
+  final ProgressChangeCallback onChange;
+
+  /// Callback that's called if the navigation is closed.
   final VoidCallback onClose;
+
+
+  bool get isFirstFocus => progress <= 0.0;
+  bool get isLastFocus => progress >= maxProgress - 1;
 
   @override
   Widget build(BuildContext context) {
@@ -253,23 +286,23 @@ class FocusBar extends StatelessWidget {
         onPressed: onClose,
       ),
       Slider(
-        divisions: numFocuses - 1,
+        divisions: maxProgress - 1,
         min: 0.0,
-        max: numFocuses - 1.0,
-        value: currentFocus.toDouble(),
+        max: maxProgress - 1.0,
+        value: progress.toDouble(),
         onChanged: (val) => onChange(val.round()),
       ),
       Opacity(
         opacity: isFirstFocus ? 0.0 : 1.0,
         child: IconButton(
           icon: Icon(Icons.keyboard_arrow_left, color: primaryColor),
-          onPressed: () => isFirstFocus ? null : onChange(currentFocus - 1),
+          onPressed: () => isFirstFocus ? null : onChange(progress - 1),
         ),
       ),
       StreamBuilder(
         stream: Bloc.of(context).current,
         builder: (context, AsyncSnapshot<ComicData> snapshot) {
-          return Text('${currentFocus + 1} / $numFocuses',
+          return Text('${progress + 1} / $maxProgress',
             style: TextStyle(
               color: primaryColor,
               fontWeight: FontWeight.w700,
@@ -283,7 +316,7 @@ class FocusBar extends StatelessWidget {
           isLastFocus ? Icons.done : Icons.keyboard_arrow_right,
           color: primaryColor
         ),
-        onPressed: () => isLastFocus ? onClose() : onChange(currentFocus + 1),
+        onPressed: () => isLastFocus ? onClose() : onChange(progress + 1),
       ),
     ];
 

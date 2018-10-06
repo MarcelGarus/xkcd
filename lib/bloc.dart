@@ -61,9 +61,9 @@ class Bloc {
   }
 
   void _updateComics() {
-    _updateComic(_previousSubject, currentId - 1).catchError(print);
+    //_updateComic(_previousSubject, currentId - 1).catchError(print);
     _updateComic(_currentSubject, currentId).catchError(print);
-    _updateComic(_nextSubject, currentId + 1).catchError(print);
+    //_updateComic(_nextSubject, currentId + 1).catchError(print);
   }
 
   void goToNext() {

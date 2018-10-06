@@ -16,58 +16,80 @@ class ZoomableImage extends StatefulWidget {
     this.image, {
     Key key,
     @deprecated double scale,
-
-    /// Maximum ratio to blow up image pixels. A value of 2.0 means that the
-    /// a single device pixel will be rendered as up to 4 logical pixels.
     this.maxScale = 2.0,
     this.onTap,
     this.backgroundColor = Colors.black,
-
-    /// Placeholder widget to be used while [image] is being resolved.
     this.placeholder,
   }) : super(key: key);
 
   @override
-  _ZoomableImageState createState() => new _ZoomableImageState();
+  _ZoomableImageState createState() => _ZoomableImageState();
 }
 
 // See /flutter/examples/layers/widgets/gestures.dart
-class _ZoomableImageState extends State<ZoomableImage> {
+class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProviderStateMixin {
   ImageStream _imageStream;
   ui.Image _image;
 
+  AnimationController _controller;
   Offset _startingFocalPoint;
 
   Offset _previousOffset;
   Offset _offset; // where the top left corner of the image is drawn
+  Animation _offsetAnimation;
 
   double _previousScale;
   double _scale; // multiplier applied to scale the full image
+  Animation _scaleAnimation;
 
   Orientation _previousOrientation;
 
   Size _canvasSize;
 
 
-  void _focus(Rect rect) {
-    Size focusSize = rect.size;
+  /// Initializes animation controller and animations.
+  void initState() {
+    super.initState();
 
-    _scale = math.min(
+    _controller = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 300)
+    )..addListener(() => setState(() {
+      _offset = _offsetAnimation.value;
+      _scale = _scaleAnimation.value;
+    }));
+  }
+
+  /// Focuses on a part of the image.
+  void _focus(Rect focusRect, { bool animate = true }) {
+    final focusSize = focusRect.size;
+    final targetScale = math.min(
       _canvasSize.width / focusSize.width,
       _canvasSize.height / focusSize.height,
     );
+    final focusCenter = focusRect.center * targetScale;
+    final targetOffset = (_canvasSize / 2.0).bottomRight(Offset.zero) - focusCenter;
 
-    Offset focusCenter = rect.center * _scale;
-    _offset = (_canvasSize / 2.0).bottomRight(Offset.zero) - focusCenter;
+    if (animate) {
+      final offsetCurve = CurvedAnimation(curve: Cubic(0.1, 0.0, 0.6, 1.0), parent: _controller);
+      final scaleCurve = CurvedAnimation(curve: Cubic(0.1, -0.8, 0.6, 0.0), parent: _controller);
+      _offsetAnimation = Tween(begin: _offset, end: targetOffset).animate(offsetCurve);
+      _scaleAnimation = Tween(begin: _scale, end: targetScale).animate(scaleCurve);
+      _controller.forward(from: 0.0);
+    } else {
+      _scale = targetScale;
+      _offset = targetOffset;
+    }
   }
 
+  /// Centers the image.
   void _centerAndScaleImage() {
     _focus(Rect.fromLTWH(
       0.0,
       0.0,
       _image.width.toDouble(),
       _image.height.toDouble()
-    ));
+    ), animate: false);
   }
 
   Function() _handleDoubleTap(BuildContext ctx) {
