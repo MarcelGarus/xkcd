@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:rxdart/subjects.dart';
 import 'package:xkcd/comic_data.dart';
@@ -47,16 +49,21 @@ class Bloc {
   }
 
 
-  Future<ComicData> _getComic(int id) async {
-    final comic = comics[id] ?? await ComicData.fromId(id);
-    comics[id] = comic;
-    return comic;
+  Future<void> _updateComic(BehaviorSubject subject, int id) async {
+    final cachedComic = comics[id];
+    subject.add(cachedComic);
+
+    if (cachedComic == null) {
+      final comic = await ComicData.fromId(id);
+      comics[id] = comic;
+      subject.add(comic);
+    }
   }
 
   void _updateComics() {
-    _getComic(currentId - 1).then(_previousSubject.add).catchError(print);
-    _getComic(currentId).then(_currentSubject.add).catchError(print);
-    _getComic(currentId + 1).then(_nextSubject.add).catchError(print);
+    _updateComic(_previousSubject, currentId - 1).catchError(print);
+    _updateComic(_currentSubject, currentId).catchError(print);
+    _updateComic(_nextSubject, currentId + 1).catchError(print);
   }
 
   void goToNext() {
@@ -67,6 +74,37 @@ class Bloc {
   void goToPrevious() {
     currentId--;
     _updateComics();
+  }
+
+  void doSomething(ComicData comic) {
+    Image.network(comic.imageUrl).image
+      .resolve(ImageConfiguration())
+      .addListener((imageInfo, synchronousCall) async {
+        final ui.Image image = imageInfo.image;
+        final ByteData imageData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final Iterable<Color> pixels = _getImagePixels(imageData, image.width, image.height);
+      });
+  }
+
+  Iterable<Color> _getImagePixels(ByteData pixels, int width, int height) sync* {
+    final int rowStride = width * 4;
+    int rowStart = 0;
+    int rowEnd = height;
+    int colStart = 0;
+    int colEnd = width;
+    int byteCount = 0;
+
+    for (int row = rowStart; row < rowEnd; ++row) {
+      for (int col = colStart; col < colEnd; ++col) {
+        final int position = row * rowStride + col * 4;
+        // Convert from RGBA to ARGB.
+        final int pixel = pixels.getUint32(position);
+        final Color color = Color((pixel << 24) | (pixel >> 8));
+        byteCount += 4;
+        yield color;
+      }
+    }
+    assert(byteCount == ((rowEnd - rowStart) * (colEnd - colStart) * 4));
   }
 }
 

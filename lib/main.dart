@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:xkcd/bloc.dart';
 import 'package:xkcd/comic_data.dart';
+import 'package:xkcd/zoomable_image.dart';
 
 void main() => runApp(MyApp());
 
@@ -34,46 +35,58 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text('You have pushed the button this many times:'),
-            Expanded(
-              child: InfiniteTabs(
-                previous: _buildStreamedComic(Bloc.of(context).previous),
-                current: _buildStreamedComic(Bloc.of(context).current),
-                next: _buildStreamedComic(Bloc.of(context).next),
-                onNext: Bloc.of(context).goToNext,
-                onPrevious: Bloc.of(context).goToPrevious,
-              )
+      bottomNavigationBar: BottomAppBar(
+        child: Material(
+          color: Colors.blue,
+          elevation: 12.0,
+          child: Container(
+            height: 56.0,
+            child: Row(
+              children: <Widget>[
+                Text('xkcd bottom bar', style: TextStyle(color: Colors.white))
+              ],
             )
-          ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: null,
-        tooltip: 'Increment',
-        child: Icon(Icons.add),
-      ),
+      /*bottomNavigationBar: AppBar(
+        title: Text(widget.title),
+      ),*/
+      body: _buildStreamedComic(Bloc.of(context).current),
+      /*body: InfiniteTabs(
+        previous: _buildStreamedComic(Bloc.of(context).previous),
+        current: _buildStreamedComic(Bloc.of(context).current),
+        next: _buildStreamedComic(Bloc.of(context).next),
+        onNext: Bloc.of(context).goToNext,
+        onPrevious: Bloc.of(context).goToPrevious,
+      ),*/
     );
   }
 
   _buildStreamedComic(Stream<ComicData> stream) {
-    return StreamBuilder(
-      stream: stream,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData)
-          return CircularProgressIndicator();
+    return Container(
+      padding: EdgeInsets.all(16.0),
+      alignment: Alignment.center,
+      color: Colors.white,
+      child: StreamBuilder(
+        stream: stream,
+        builder: (context, AsyncSnapshot<ComicData> snapshot) {
+          if (!snapshot.hasData)
+            return CircularProgressIndicator();
 
-        return Image.network(snapshot.data.imageUrl);
-      },
+          return ZoomableImage(
+            Image.network(snapshot.data.imageUrl).image,
+            placeholder: CircularProgressIndicator(),
+            backgroundColor: Colors.white,
+          );
+        },
+      )
     );
   }
 }
+
+
+
 
 class InfiniteTabs extends StatefulWidget {
   InfiniteTabs({
@@ -95,6 +108,9 @@ class _InfiniteTabsState extends State<InfiniteTabs>
     with SingleTickerProviderStateMixin {
   
   Offset dragStart;
+  bool isScrollingDrag = false;
+
+  // Stuff for scrolling.
   double _scroll = 0.0;
   double get scroll => _scroll;
   set scroll(double val) {
@@ -102,7 +118,6 @@ class _InfiniteTabsState extends State<InfiniteTabs>
   }
   double scrollWhenDragStarted = 0.0;
   int scrollTarget;
-
   AnimationController controller;
   Animation<double> animation;
 
@@ -127,22 +142,20 @@ class _InfiniteTabsState extends State<InfiniteTabs>
     super.dispose();
   }
 
+
   void onDragDown(DragDownDetails details) {
     dragStart = details.globalPosition;
     scrollWhenDragStarted = scroll;
   }
 
-  void onDragUpdate(DragUpdateDetails details) {
-    setState(() {
-      final delta = (details.globalPosition - dragStart).dx;
-      scroll = scrollWhenDragStarted + delta / MediaQuery.of(context).size.width;
-    });
-  }
+  void onDragUpdate(DragUpdateDetails details) => setState(() {
+    final delta = details.globalPosition - dragStart;
+    scroll = scrollWhenDragStarted + delta.dx / MediaQuery.of(context).size.width;
+  });
 
   void onDragEnd(DragEndDetails details) {
     final velocity = details.velocity.pixelsPerSecond.dx / 1000.0;
     scrollTarget = (scroll + velocity * 0.2).clamp(-1, 1).round();
-    print('Target is $scrollTarget. Velocity is $velocity.');
 
     animation = Tween(begin: scroll, end: scrollTarget.toDouble()).animate(controller);
     controller

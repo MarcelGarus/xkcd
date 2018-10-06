@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+/// A simple, lightweight class that holds all static comic information.
 class ComicData {
   ComicData({
     @required this.id,
