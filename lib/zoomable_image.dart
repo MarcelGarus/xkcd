@@ -95,14 +95,13 @@ class _ZoomableImageState extends State<ZoomableImage> {
   }
 
   void _handleScaleStart(ScaleStartDetails d) {
-    print("starting scale at ${d.focalPoint} from $_offset $_scale");
     _startingFocalPoint = d.focalPoint;
     _previousOffset = _offset;
     _previousScale = _scale;
   }
 
   void _handleScaleUpdate(ScaleUpdateDetails d) {
-    double newScale = (_previousScale * d.scale).clamp(0.8, widget.maxScale);
+    double newScale = (_previousScale * d.scale).clamp(0.2, widget.maxScale);
 
     // Ensure that item under the focal point stays in the same place despite zooming
     final Offset normalizedOffset =

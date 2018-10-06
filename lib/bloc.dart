@@ -27,7 +27,7 @@ class Bloc {
   final _currentSubject = BehaviorSubject<ComicData>();
   final _nextSubject = BehaviorSubject<ComicData>();
 
-  int currentId = 123;
+  int currentId = 1234;
   final comics = Map<int, ComicData>();
 
   Stream<ComicData> get previous => _previousSubject.stream;
