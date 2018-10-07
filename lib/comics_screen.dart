@@ -41,6 +41,8 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
   }
 
   void _enterZoomMode(Comic comic, { bool initFocus = false }) {
+    assert(!inZoomMode);
+
     zoomedComic = comic;
     if (initFocus)
       _goToFocus(0);
@@ -48,9 +50,16 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
   }
 
   void _exitZoomMode() => setState(() {
-    zoomedComic = null;
+    assert(inZoomMode);
+
     currentFocus = null;
-    focus = Rect.fromLTWH(0.0, 0.0, 100.0, 100.0);
+    focus = Rect.fromLTWH(
+      0.0,
+      0.0,
+      zoomedComic.image.width.toDouble(),
+      zoomedComic.image.height.toDouble()
+    );
+    zoomedComic = null;
     zoomController.reverse();
   });
 
@@ -187,11 +196,12 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
             focus: focus,
             placeholder: CircularProgressIndicator(),
             backgroundColor: Colors.white,
-            onMoved: (Rect rect) => setState(() {
+            onMoved: (Rect rect) {
               focus = rect;
               if (!inZoomMode)
                 _enterZoomMode(snapshot.data);
-            }),
+              else setState(() {});
+            },
             onCentered: _exitZoomMode,
           );
         },

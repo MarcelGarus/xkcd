@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show min;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
@@ -61,7 +62,7 @@ class Comic {
 
 
   /// The actual image.
-  final ImageProvider image, inversedImage;
+  final ui.Image image, inversedImage;
 
   /// Whether the image is monochromatic.
   final bool isMonochromatic;
@@ -102,11 +103,38 @@ class Comic {
     return await _fromUrl('http://xkcd.com/info.0.json');
   }
 
-  /// Loads the image provider.
-  Comic loadImageProvider() {
-    return this.copyWith(
-      image: Image.network(imageUrl).image
+  /// Loads the image provider. Instead of using [createLocalImageConfiguration],
+  /// as is the usual procedure, for now, a dummy image configuration is used,
+  /// without taking into account device pixel ratio and stuff like that.
+  Future<Comic> loadImage() async {
+    ui.Image image;
+
+    // TODO: Should we provide an asset bundle for caching? Do we need to be
+    // careful about flushing of images?
+    final config = ImageConfiguration(
+      bundle: null,//DefaultAssetBundle.of(context),
+      devicePixelRatio: 1.0,
+      locale: null,
+      textDirection: TextDirection.ltr,
+      size: Size(100.0, 100.0),
+      platform: TargetPlatform.android,
     );
+    final ImageStream _imageStream = Image.network(imageUrl).image.resolve(config);
+    final Function listener = (ImageInfo info, bool synchronousCall) {
+      image = info.image;
+      return this.copyWith(image: info.image);
+    };
+
+    // Exponentially back out.
+    _imageStream.addListener(listener);
+    int ticker = 1;
+    while (image == null) {
+      await Future.delayed(Duration(milliseconds: ticker), () {});
+      ticker = min(ticker * 2, 500);
+    }
+    _imageStream.removeListener(listener);
+
+    return this.copyWith(image: image);
   }
 
 
@@ -169,8 +197,8 @@ class Comic {
     String link = '',
     String news = '',
     String transcript = '',
-    ImageProvider image,
-    ImageProvider inversedImage,
+    ui.Image image,
+    ui.Image inversedImage,
     bool isMonochromatic,
     List<Rect> focuses
   }) => Comic(
@@ -189,5 +217,5 @@ class Comic {
     focuses: focuses ?? this.focuses
   );
 
-  String toString() => 'Comic #$id: "$safeTitle". Focuses: $focuses';
+  String toString() => 'Comic #$id: "$safeTitle". Image: $image Focuses: $focuses';
 }

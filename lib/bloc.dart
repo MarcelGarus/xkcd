@@ -85,8 +85,6 @@ class BlocProvider extends StatelessWidget {
 
 
 
-
-
 /// Callback if the comic got updated.
 typedef ComicUpdatedCallback(Comic comic);
 
@@ -105,7 +103,7 @@ class ComicLibrary {
     comic = comics[id] ?? await (id == null ? Comic.latest() : Comic.fromId(id)).catchError(print);
     _updateComic(comic, callback);
 
-    comic = comic.loadImageProvider();
+    comic = await comic.loadImage();
     _updateComic(comic, callback);
 
     comic = await comic.findFocuses().catchError(print);
