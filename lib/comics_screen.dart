@@ -11,63 +11,98 @@ class ComicsScreen extends StatefulWidget {
 }
 
 class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderStateMixin {
-  bool focusesExist = true;
-  bool isInZoomMode = false;
+  // Zoom mode refers to the mode where the comic navigation bar is visible
+  // and a single comic is viewed in more detail.
+  Comic zoomedComic;
+  bool get inZoomMode => zoomedComic != null;
   double zoomMode = 0.0;
   double get inverseZoomMode => 1.0 - zoomMode;
-  int currentFocus;
+  AnimationController zoomController;
+  Animation<double> zoomAnimation;
 
-  AnimationController controller;
-  Animation<double> animation;
+  // The focuses of the comic represent important parts.
+  bool focusesExist = true;
+  int currentFocus;
+  Rect focus;
+  AnimationController focusController;
+  Animation<Rect> focusAnimation;
 
 
   void initState() {
     super.initState();
 
-    controller = AnimationController(
+    zoomController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 100),
     )..addListener(() => setState(() {
-      zoomMode = animation.value;
+      zoomMode = zoomAnimation.value;
     }));
-    animation = CurvedAnimation(curve: Cubic(0.0, 0.0, 0.6, 1.0), parent: controller);
+    zoomAnimation = CurvedAnimation(curve: Cubic(0.0, 0.0, 0.6, 1.0), parent: zoomController);
   }
 
-  void enterZoomMode({ bool focusOnFirstComic = false }) {
-    isInZoomMode = true;
-    if (focusOnFirstComic)
-      currentFocus = 0;
-    controller.forward();
+  void _enterZoomMode(Comic comic, { bool initFocus = false }) {
+    zoomedComic = comic;
+    if (initFocus)
+      _goToFocus(0);
+    zoomController.forward();
   }
 
-  void exitZoomMode() {
-    isInZoomMode = false;
+  void _exitZoomMode() => setState(() {
+    zoomedComic = null;
     currentFocus = null;
-    controller.reverse();
+    focus = Rect.fromLTWH(0.0, 0.0, 100.0, 100.0);
+    zoomController.reverse();
+  });
+
+  void _goToFocus(int index) {
+    assert(index == null || index < zoomedComic.focuses.length);
+
+    if (index == null)
+      _exitZoomMode();
+    else setState(() {
+      currentFocus = index;
+      focus = zoomedComic.focuses[currentFocus];
+    });
   }
 
-  void displayComicDetails() {
-    showBottomSheet(
-      context: context,
-      builder: (context) => ComicDetails()
-    );
-  }
-
-
-  EdgeInsets get focusSuggestionPadding => EdgeInsets.only(
-    bottom: !focusesExist ? 0.0 : (56 * inverseZoomMode).clamp(0.0, double.infinity)
+  void _displayComicDetails() => showBottomSheet(
+    context: context,
+    builder: (context) => ComicDetails()
   );
+
+
   Offset get zoomBarOffset => Offset(0.0, inverseZoomMode * 56.0);
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
-    final suggestionAndAppBar = Column(
+    final bottomPart = Column(
       mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Suggestion(
-          isShown: focusesExist && !isInZoomMode,
-          onTap: () => enterZoomMode(focusOnFirstComic: true),
+      children: [ _buildSuggestion(), _buildAppBar() ]
+    );
+
+    final tabs = InfiniteTabs(
+      isEnabled: !inZoomMode,
+      previous: Container(color: Colors.red),
+      current: _buildStreamedComic(Bloc.of(context).current),
+      next: Container(color: Colors.yellow),
+    );
+
+    return Stack(
+      children: <Widget>[ tabs, bottomPart, _buildNavigationBar() ]
+    );
+  }
+
+  Widget _buildSuggestion() {
+    final primaryColor = Theme.of(context).primaryColor;
+    return StreamBuilder(
+      stream: Bloc.of(context).current,
+      builder: (context, AsyncSnapshot<Comic> snapshot) {
+        final Comic comic = snapshot.data;
+        final bool show = (comic?.focuses?.length ?? 0) > 0 && !inZoomMode;
+
+        return Suggestion(
+          isShown: show,
+          onTap: () => _enterZoomMode(comic, initFocus: true),
           icon: Icon(Icons.view_carousel, color: primaryColor),
           label: Text('Zoom at the comic tiles',
             style: TextStyle(
@@ -77,42 +112,8 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
               letterSpacing: 0.7
             )
           ),
-        ),
-        _buildAppBar()
-      ]
-    );
-
-    final zoomBar = Visibility(
-      visible: zoomMode > 0.0,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Transform.translate(
-          offset: zoomBarOffset,
-          child: ProgressNavigation(
-            progress: currentFocus ?? 0,
-            maxProgress: 3,
-            onChanged: (newFocus) => setState(() {
-              currentFocus = newFocus;
-            }),
-            onClose: exitZoomMode,
-          ),
-        )
-      )
-    );
-
-    final tabs = InfiniteTabs(
-      isEnabled: !isInZoomMode,
-      previous: Container(color: Colors.red),
-      next: Container(color: Colors.yellow),
-      current: _buildStreamedComic(Bloc.of(context).current),
-    );
-
-    return Stack(
-      children: <Widget>[
-        tabs,
-        suggestionAndAppBar,
-        zoomBar,
-      ]
+        );
+      },
     );
   }
 
@@ -136,10 +137,9 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       ),
       IconButton(
         icon: Icon(Icons.info_outline, color: Colors.white),
-        onPressed: displayComicDetails,
+        onPressed: _displayComicDetails,
       ),
     ];
-
     return Material(
       color: Theme.of(context).primaryColor,
       elevation: 12.0,
@@ -150,6 +150,24 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
           children: items,
         )
       ),
+    );
+  }
+
+  Widget _buildNavigationBar() {
+    return Visibility(
+      visible: zoomMode > 0.0,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Transform.translate(
+          offset: zoomBarOffset,
+          child: ComicNavigation(
+            progress: currentFocus,
+            maxProgress: 3,
+            onChanged: _goToFocus,
+            onClose: _exitZoomMode,
+          ),
+        )
+      )
     );
   }
 
@@ -164,17 +182,17 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
           if (!snapshot.hasData || snapshot.data.image == null)
             return CircularProgressIndicator();
 
-          final focus = snapshot.data.focuses == null || currentFocus == null
-            ? null : snapshot.data.focuses[currentFocus];
           return ZoomableImage(
             image: snapshot.data.image,
             focus: focus,
             placeholder: CircularProgressIndicator(),
             backgroundColor: Colors.white,
-            onMoved: () {
-              if (!isInZoomMode)
-                enterZoomMode();
-            },
+            onMoved: (Rect rect) => setState(() {
+              focus = rect;
+              if (!inZoomMode)
+                _enterZoomMode(snapshot.data);
+            }),
+            onCentered: _exitZoomMode,
           );
         },
       )
@@ -279,8 +297,8 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
 
 
 
-/// A callback for being notified about changes of the progress.
-typedef ProgressChangedCallback(int index);
+/// A callback for being notified about changes of the navigation.
+typedef NavigationChangedCallback(int index);
 
 /// A widget to be used as an alternative for the bottom app bar for navigating
 /// through multiple focus areas. Includes:
@@ -293,15 +311,16 @@ typedef ProgressChangedCallback(int index);
 ///   - If at the last comic, the next button morphes into a close button. TODO animate!
 /// 
 /// You just provide the [progress], the [maxProgress] as well as callbacks
-/// to be notified [onChanged] and [onClose].
+/// to be notified [onChanged] and [onClose]. If [progress] is [null], no
+/// progress UI is displayed but a general zoom info instead.
 /// 
-/// The progress navigation widget itself does not maintain any state. Instead,
-/// when the state of the progress changes, the widget calls the [onChanged]
-/// callback. Usually, widgets using the navigation will listen for the
-/// [onChanged] callback and rebuild the navigation with a new [progress] value
-/// to update the visual appearance of the navigation.
-class ProgressNavigation extends StatelessWidget {
-  ProgressNavigation({
+/// The navigation widget itself does not maintain any state. Instead, when the
+/// state changes, the widget notifies the [onChanged] callback. Usually,
+/// widgets using the navigation will listen for the [onChanged] callback and
+/// rebuild the navigation with a new [progress] value to update the visual
+/// appearance of the navigation.
+class ComicNavigation extends StatelessWidget {
+  ComicNavigation({
     @required this.progress,
     @required this.maxProgress,
     @required this.onChanged,
@@ -315,7 +334,7 @@ class ProgressNavigation extends StatelessWidget {
   final int maxProgress;
 
   /// Callback being called whenever the progress changes.
-  final ProgressChangedCallback onChanged;
+  final NavigationChangedCallback onChanged;
 
   /// Callback that's called if the navigation is closed.
   final VoidCallback onClose;
@@ -326,6 +345,35 @@ class ProgressNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Widget child = (progress == null)
+      ? buildGeneralContent(context)
+      : buildProgressContent(context);
+
+    return Material(
+      color: Colors.white,
+      elevation: 12.0,
+      child: Container(height: 56.0, child: child),
+    );
+  }
+
+  Widget buildGeneralContent(BuildContext context) {
+    return InkResponse(
+      onTap: () => onChanged(null),
+      radius: MediaQuery.of(context).size.width,
+      highlightShape: BoxShape.rectangle,
+      child: Center(
+        child: Text('Click to return',
+          style: TextStyle(
+            color: Theme.of(context).primaryColor,
+            fontSize: 18.0,
+            fontWeight: FontWeight.bold
+          )
+        )
+      )
+    );
+  }
+
+  Widget buildProgressContent(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
     final items = [
       IconButton(
@@ -367,16 +415,7 @@ class ProgressNavigation extends StatelessWidget {
       ),
     ];
 
-    return Material(
-      color: Colors.white,
-      elevation: 12.0,
-      child: Container(
-        height: 56.0,
-        child: Row(
-          children: items,
-        )
-      ),
-    );
+    return Row(children: items);
   }
 }
 
