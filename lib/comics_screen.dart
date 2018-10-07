@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:xkcd/bloc.dart';
-import 'package:xkcd/comic_data.dart';
+import 'package:xkcd/comic.dart';
 import 'package:xkcd/zoomable_image.dart';
 
 class ComicsScreen extends StatefulWidget {
@@ -13,7 +13,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
   bool focusesExist = true;
   double zoomMode = 0.0;
   double get inverseZoomMode => 1.0 - zoomMode;
-  int currentFocus = 0;
+  int currentFocus;
 
   AnimationController controller;
   Animation<double> animation;
@@ -37,6 +37,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
   }
 
   void exitZoomMode() {
+    currentFocus = null;
     controller.reverse();
   }
 
@@ -48,23 +49,27 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).primaryColor;
     final appBar = Align(
       alignment: Alignment.bottomCenter,
       child: _buildAppBar()
     );
 
-    final zoomBar = Align(
-      alignment: Alignment.bottomCenter,
-      child: Transform.translate(
-        offset: zoomBarOffset,
-        child: ProgressNavigation(
-          progress: currentFocus,
-          maxProgress: 3,
-          onChange: (newFocus) => setState(() {
-            currentFocus = newFocus;
-          }),
-          onClose: exitZoomMode,
-        ),
+    final zoomBar = Visibility(
+      visible: zoomMode > 0.0,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Transform.translate(
+          offset: zoomBarOffset,
+          child: ProgressNavigation(
+            progress: currentFocus ?? 0,
+            maxProgress: 3,
+            onChanged: (newFocus) => setState(() {
+              currentFocus = newFocus;
+            }),
+            onClose: exitZoomMode,
+          ),
+        )
       )
     );
 
@@ -73,9 +78,16 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       padding: EdgeInsets.only(bottom: 56.0),
       child: Suggestion(
         isShown: focusesExist && zoomMode == 0.0,
-        icon: Icon(Icons.view_carousel, color: Colors.white),
-        label: Text('View comic', style: TextStyle(color: Colors.white)),
         onTap: enterZoomMode,
+        icon: Icon(Icons.view_carousel, color: primaryColor),
+        label: Text('Zoom at the comic tiles',
+          style: TextStyle(
+            color: primaryColor,
+            fontWeight: FontWeight.w700,
+            fontSize: 18.0,
+            letterSpacing: 0.7
+          )
+        ),
       )
     );
 
@@ -97,7 +109,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       ),
       StreamBuilder(
         stream: Bloc.of(context).current,
-        builder: (context, AsyncSnapshot<ComicData> snapshot) {
+        builder: (context, AsyncSnapshot<Comic> snapshot) {
           return Text(snapshot.data?.title ?? '<loading>',
             style: TextStyle(
               color: Colors.white,
@@ -126,19 +138,22 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildStreamedComic(Stream<ComicData> stream) {
+  Widget _buildStreamedComic(Stream<Comic> stream) {
     return Container(
       padding: EdgeInsets.all(16.0),
       alignment: Alignment.center,
       color: Colors.white,
       child: StreamBuilder(
         stream: stream,
-        builder: (context, AsyncSnapshot<ComicData> snapshot) {
-          if (!snapshot.hasData)
+        builder: (context, AsyncSnapshot<Comic> snapshot) {
+          if (!snapshot.hasData || snapshot.data.image == null)
             return CircularProgressIndicator();
 
+          final focus = snapshot.data.focuses == null || currentFocus == null
+              ? null : snapshot.data.focuses[currentFocus];
           return ZoomableImage(
-            Image.network(snapshot.data.imageUrl).image,
+            snapshot.data.image,
+            focus: focus,
             placeholder: CircularProgressIndicator(),
             backgroundColor: Colors.white,
           );
@@ -156,27 +171,28 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
 /// You can provide an [icon] and a [label] as well as an [onTap] callback.
 /// Also, you can change the [isShown] parameter to show or hide the chip.
 /// IMPORTANT: This widget expects to be placed at the buttom of the enclosing
-/// widget, as it doesn't really "hides" but moves down.
+/// widget, as it doesn't really "hides" but moves down. TODO
 class Suggestion extends StatefulWidget {
   Suggestion({
     @required this.isShown,
-    this.icon,
+    @required this.onTap,
+    @required this.icon,
     @required this.label,
-    @required this.onTap
   });
   
   /// Whether the suggestion chip is shown. If you change this, it jumpily
   /// animates to its new position.
   final bool isShown;
 
+  /// A callback to be called if the suggestion is tapped.
+  final VoidCallback onTap;
+
   /// The icon.
   final Widget icon;
 
-  /// The label.
+  /// The label;
   final Widget label;
 
-  /// A callback to be called if the suggestion is tapped.
-  final VoidCallback onTap;
 
   @override
   _SuggestionState createState() => _SuggestionState();
@@ -221,12 +237,19 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
 
     return Transform.translate(
       offset: Offset(0.0, 56 * (1.0 - value)),
-      child: ActionChip(
-        avatar: widget.icon,
-        label: widget.label,
-        onPressed: widget.onTap,
-        backgroundColor: Colors.black,
-      )
+      child: Padding(
+        padding: EdgeInsets.all(8.0),
+        child: Transform.scale(
+          scale: 0.8,
+          child: FloatingActionButton.extended(
+            backgroundColor: Colors.white,
+            elevation: 8.0,
+            icon: widget.icon,
+            label: widget.label,
+            onPressed: widget.onTap,
+          )
+        )
+      ),
     );
   }
 }
@@ -235,6 +258,8 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
 
 
 
+/// A callback for being notified about changes of the progress.
+typedef ProgressChangedCallback(int index);
 
 /// A widget to be used as an alternative for the bottom app bar for navigating
 /// through multiple focus areas. Includes:
@@ -247,17 +272,18 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
 ///   - If at the last comic, the next button morphes into a close button. TODO animate!
 /// 
 /// You just provide the [progress], the [maxProgress] as well as callbacks
-/// to be notified [onChange] and [onClose].
-/// IMPORTANT: Notice that this widget does not hold any state itself but
-/// expects to be recreated every time the value changes with a different
-/// [progress].
-typedef ProgressChangeCallback(int index);
-
+/// to be notified [onChanged] and [onClose].
+/// 
+/// The progress navigation widget itself does not maintain any state. Instead,
+/// when the state of the progress changes, the widget calls the [onChanged]
+/// callback. Usually, widgets using the navigation will listen for the
+/// [onChanged] callback and rebuild the navigation with a new [progress] value
+/// to update the visual appearance of the navigation.
 class ProgressNavigation extends StatelessWidget {
   ProgressNavigation({
     @required this.progress,
     @required this.maxProgress,
-    @required this.onChange,
+    @required this.onChanged,
     @required this.onClose
   });
 
@@ -268,14 +294,14 @@ class ProgressNavigation extends StatelessWidget {
   final int maxProgress;
 
   /// Callback being called whenever the progress changes.
-  final ProgressChangeCallback onChange;
+  final ProgressChangedCallback onChanged;
 
   /// Callback that's called if the navigation is closed.
   final VoidCallback onClose;
 
 
-  bool get isFirstFocus => progress <= 0.0;
-  bool get isLastFocus => progress >= maxProgress - 1;
+  bool get isFirst => progress <= 0.0;
+  bool get isLast => progress >= maxProgress - 1;
 
   @override
   Widget build(BuildContext context) {
@@ -290,18 +316,18 @@ class ProgressNavigation extends StatelessWidget {
         min: 0.0,
         max: maxProgress - 1.0,
         value: progress.toDouble(),
-        onChanged: (val) => onChange(val.round()),
+        onChanged: (val) => onChanged(val.round()),
       ),
       Opacity(
-        opacity: isFirstFocus ? 0.0 : 1.0,
+        opacity: isFirst ? 0.0 : 1.0,
         child: IconButton(
           icon: Icon(Icons.keyboard_arrow_left, color: primaryColor),
-          onPressed: () => isFirstFocus ? null : onChange(progress - 1),
+          onPressed: () => isFirst ? null : onChanged(progress - 1),
         ),
       ),
       StreamBuilder(
         stream: Bloc.of(context).current,
-        builder: (context, AsyncSnapshot<ComicData> snapshot) {
+        builder: (context, AsyncSnapshot<Comic> snapshot) {
           return Text('${progress + 1} / $maxProgress',
             style: TextStyle(
               color: primaryColor,
@@ -313,10 +339,10 @@ class ProgressNavigation extends StatelessWidget {
       ),
       IconButton(
         icon: Icon(
-          isLastFocus ? Icons.done : Icons.keyboard_arrow_right,
+          isLast ? Icons.done : Icons.keyboard_arrow_right,
           color: primaryColor
         ),
-        onPressed: () => isLastFocus ? onClose() : onChange(progress + 1),
+        onPressed: () => isLast ? onClose() : onChanged(progress + 1),
       ),
     ];
 

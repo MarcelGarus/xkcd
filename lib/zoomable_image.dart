@@ -6,21 +6,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 class ZoomableImage extends StatefulWidget {
-  final ImageProvider image;
-  final double maxScale;
-  final GestureTapCallback onTap;
-  final Color backgroundColor;
-  final Widget placeholder;
-
   ZoomableImage(
     this.image, {
     Key key,
+    this.focus,
     @deprecated double scale,
     this.maxScale = 2.0,
     this.onTap,
     this.backgroundColor = Colors.black,
     this.placeholder,
   }) : super(key: key);
+
+  final ImageProvider image;
+  final Rect focus;
+  final double maxScale;
+  final GestureTapCallback onTap;
+  final Color backgroundColor;
+  final Widget placeholder;
 
   @override
   _ZoomableImageState createState() => _ZoomableImageState();
@@ -30,6 +32,7 @@ class ZoomableImage extends StatefulWidget {
 class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProviderStateMixin {
   ImageStream _imageStream;
   ui.Image _image;
+  Rect _lastFocus;
 
   AnimationController _controller;
   Offset _startingFocalPoint;
@@ -62,7 +65,15 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
 
   /// Focuses on a part of the image.
   void _focus(Rect focusRect, { bool animate = true }) {
+    focusRect = focusRect ?? Rect.fromLTWH(
+      0.0,
+      0.0,
+      _image.width.toDouble(),
+      _image.height.toDouble()
+    );
+
     final focusSize = focusRect.size;
+    print('Canvas size is $_canvasSize and $focusSize is $focusSize');
     final targetScale = math.min(
       _canvasSize.width / focusSize.width,
       _canvasSize.height / focusSize.height,
@@ -71,8 +82,8 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
     final targetOffset = (_canvasSize / 2.0).bottomRight(Offset.zero) - focusCenter;
 
     if (animate) {
-      final offsetCurve = CurvedAnimation(curve: Cubic(0.1, 0.0, 0.6, 1.0), parent: _controller);
-      final scaleCurve = CurvedAnimation(curve: Cubic(0.1, -0.8, 0.6, 0.0), parent: _controller);
+      final offsetCurve = CurvedAnimation(curve: Cubic(0.2, 0.0, 0.5, 1.0), parent: _controller);
+      final scaleCurve = CurvedAnimation(curve: Cubic(0.2, 0.0, 0.5, 1.0), parent: _controller);
       _offsetAnimation = Tween(begin: _offset, end: targetOffset).animate(offsetCurve);
       _scaleAnimation = Tween(begin: _scale, end: targetScale).animate(scaleCurve);
       _controller.forward(from: 0.0);
@@ -83,23 +94,13 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
   }
 
   /// Centers the image.
-  void _centerAndScaleImage() {
-    _focus(Rect.fromLTWH(
-      0.0,
-      0.0,
-      _image.width.toDouble(),
-      _image.height.toDouble()
-    ), animate: false);
-  }
+  void _centerAndScaleImage() => _focus(null, animate: false);
 
   Function() _handleDoubleTap(BuildContext ctx) {
     return () {
       double newScale = _scale * 2;
       if (newScale > widget.maxScale) {
-        setState(() {
-          //_centerAndScaleImage();
-          _focus(Rect.fromLTWH(0.0, 0.0, 250.0, 250.0));
-        });
+        setState(() => _centerAndScaleImage());
         return;
       }
 
@@ -149,6 +150,7 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
       );
     }
 
+    // If the image didn't load yet, display the placeholder.
     if (_image == null) {
       return widget.placeholder;
     }
@@ -159,6 +161,12 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
         _previousOrientation = orientation;
         _canvasSize = constraints.biggest;
         _centerAndScaleImage();
+      }
+
+      // If the focus changed, animate to the new focus.
+      if (_lastFocus != widget.focus) {
+        _lastFocus = widget.focus;
+        _focus(widget.focus);
       }
 
       return GestureDetector(
