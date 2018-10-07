@@ -75,7 +75,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
 
     final focusSuggestion = Container(
       alignment: Alignment.bottomCenter,
-      padding: EdgeInsets.only(bottom: 56.0),
+      padding: EdgeInsets.only(bottom: 156.0),
       child: Suggestion(
         isShown: focusesExist && zoomMode == 0.0,
         onTap: enterZoomMode,

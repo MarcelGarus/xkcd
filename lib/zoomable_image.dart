@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
@@ -175,7 +176,7 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
         // If the focus changed, animate to the new focus.
         if (_previousFocus != widget.focus) {
           _previousFocus = widget.focus;
-          _focus(widget.focus);
+          Future(() => _focus(widget.focus));
         }
 
         // Return the image.
