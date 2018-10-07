@@ -14,6 +14,7 @@ class ZoomableImage extends StatefulWidget {
     this.focus,
     this.maxScale = 2.0,
     this.onTap,
+    this.onMoved,
     this.backgroundColor = Colors.black,
     this.placeholder,
   }) :
@@ -33,6 +34,9 @@ class ZoomableImage extends StatefulWidget {
 
   /// A callback for handling taps.
   final GestureTapCallback onTap;
+
+  /// Whether you can move the image with just one finger.
+  final VoidCallback onMoved; // TODO: return the current focus
 
   /// A background color.
   final Color backgroundColor;
@@ -123,25 +127,23 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
   void _centerAndScaleImage() => _focus(null, animate: false);
 
   /// Zooms in by a factor of 2 on the center of the screen.
-  Function() _handleDoubleTap(BuildContext ctx) {
-    return () => setState(() {
-      double newScale = _scale * 2;
+  void _handleDoubleTap(BuildContext ctx) => setState(() {
+    double newScale = _scale * 2;
 
-      if (newScale > widget.maxScale) {
-        _centerAndScaleImage();
-      } else {
-        // We want the new offset to be twice as far from the center in both
-        // width and height than it is now.
-        _scale = newScale;
-        _offset = _offset - (ctx.size.center(Offset.zero) - _offset);
-      }
-    });
-  }
+    if (newScale > widget.maxScale) {
+      _centerAndScaleImage();
+    } else {
+      // We want the new offset to be twice as far from the center in both
+      // width and height than it is now.
+      _scale = newScale;
+      _offset = _offset - (ctx.size.center(Offset.zero) - _offset);
+    }
+  });
 
   /// Save parameters of the moment when the scale starts in order to be able
   /// to compute deltas when scaling.
-  void _handleScaleStart(ScaleStartDetails d) {
-    _startingFocalPoint = d.focalPoint;
+  void _handleScaleStart(ScaleStartDetails details) {
+    _startingFocalPoint = details.focalPoint;
     _previousOffset = _offset;
     _previousScale = _scale;
   }
@@ -156,6 +158,9 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
 
     _scale = newScale;
     _offset = newOffset;
+    
+    if (widget.onMoved != null)
+      widget.onMoved();
   });
 
   @override
@@ -182,7 +187,7 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
         // Return the image.
         return GestureDetector(
           onTap: widget.onTap,
-          onDoubleTap: _handleDoubleTap(ctx),
+          onDoubleTap: () => _handleDoubleTap(ctx),
           onScaleStart: _handleScaleStart,
           onScaleUpdate: _handleScaleUpdate,
           child: CustomPaint(
@@ -241,7 +246,7 @@ class _ZoomableImagePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size canvasSize) {
-    Size imageSize = new Size(image.width.toDouble(), image.height.toDouble());
+    Size imageSize = Size(image.width.toDouble(), image.height.toDouble());
     Size targetSize = imageSize * scale;
 
     paintImage(

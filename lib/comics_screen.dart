@@ -12,6 +12,7 @@ class ComicsScreen extends StatefulWidget {
 
 class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderStateMixin {
   bool focusesExist = true;
+  bool isInZoomMode = false;
   double zoomMode = 0.0;
   double get inverseZoomMode => 1.0 - zoomMode;
   int currentFocus;
@@ -32,12 +33,15 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
     animation = CurvedAnimation(curve: Cubic(0.0, 0.0, 0.6, 1.0), parent: controller);
   }
 
-  void enterZoomMode() {
-    currentFocus = 0;
+  void enterZoomMode({ bool focusOnFirstComic = false }) {
+    isInZoomMode = true;
+    if (focusOnFirstComic)
+      currentFocus = 0;
     controller.forward();
   }
 
   void exitZoomMode() {
+    isInZoomMode = false;
     currentFocus = null;
     controller.reverse();
   }
@@ -62,8 +66,8 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Suggestion(
-          isShown: focusesExist && zoomMode == 0.0,
-          onTap: enterZoomMode,
+          isShown: focusesExist && !isInZoomMode,
+          onTap: () => enterZoomMode(focusOnFirstComic: true),
           icon: Icon(Icons.view_carousel, color: primaryColor),
           label: Text('Zoom at the comic tiles',
             style: TextStyle(
@@ -96,9 +100,16 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       )
     );
 
+    final tabs = InfiniteTabs(
+      isEnabled: !isInZoomMode,
+      previous: Container(color: Colors.red),
+      next: Container(color: Colors.yellow),
+      current: _buildStreamedComic(Bloc.of(context).current),
+    );
+
     return Stack(
       children: <Widget>[
-        _buildStreamedComic(Bloc.of(context).current),
+        tabs,
         suggestionAndAppBar,
         zoomBar,
       ]
@@ -154,12 +165,16 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
             return CircularProgressIndicator();
 
           final focus = snapshot.data.focuses == null || currentFocus == null
-              ? null : snapshot.data.focuses[currentFocus];
+            ? null : snapshot.data.focuses[currentFocus];
           return ZoomableImage(
             image: snapshot.data.image,
             focus: focus,
             placeholder: CircularProgressIndicator(),
             backgroundColor: Colors.white,
+            onMoved: () {
+              if (!isInZoomMode)
+                enterZoomMode();
+            },
           );
         },
       )
@@ -372,6 +387,7 @@ class ProgressNavigation extends StatelessWidget {
 
 class InfiniteTabs extends StatefulWidget {
   InfiniteTabs({
+    this.isEnabled = true,
     this.previous,
     this.current,
     this.next,
@@ -379,6 +395,7 @@ class InfiniteTabs extends StatefulWidget {
     this.onNext
   });
 
+  final bool isEnabled;
   final Widget previous, current, next;
   final VoidCallback onPrevious, onNext;
 
@@ -386,9 +403,7 @@ class InfiniteTabs extends StatefulWidget {
   _InfiniteTabsState createState() => _InfiniteTabsState();
 }
 
-class _InfiniteTabsState extends State<InfiniteTabs>
-    with SingleTickerProviderStateMixin {
-  
+class _InfiniteTabsState extends State<InfiniteTabs> with SingleTickerProviderStateMixin {
   Offset dragStart;
   bool isScrollingDrag = false;
 
@@ -412,8 +427,10 @@ class _InfiniteTabsState extends State<InfiniteTabs>
       }))
       ..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
-          if (scrollTarget == -1) widget.onNext();
-          if (scrollTarget == 1) widget.onPrevious();
+          if (scrollTarget == -1 && widget.onNext != null)
+            widget.onNext();
+          if (scrollTarget == 1 && widget.onPrevious != null)
+            widget.onPrevious();
           scroll = 0.0;
         }
       });
@@ -460,9 +477,9 @@ class _InfiniteTabsState extends State<InfiniteTabs>
     final next = widget.next ?? Container();
 
     return GestureDetector(
-      onHorizontalDragDown: onDragDown,
-      onHorizontalDragUpdate: onDragUpdate,
-      onHorizontalDragEnd: onDragEnd,
+      onHorizontalDragDown: widget.isEnabled ? onDragDown : null,
+      onHorizontalDragUpdate: widget.isEnabled ? onDragUpdate : null,
+      onHorizontalDragEnd: widget.isEnabled ? onDragEnd : null,
       child: Stack(
         children: <Widget>[
           Transform.translate(offset: previousOffset, child: previous),
