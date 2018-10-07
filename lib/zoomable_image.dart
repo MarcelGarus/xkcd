@@ -1,27 +1,42 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+/// A widget displaying a zoomable image. It can be touched and scaled using
+/// multitouch.
 class ZoomableImage extends StatefulWidget {
-  ZoomableImage(
-    this.image, {
+  ZoomableImage({
     Key key,
+    @required this.image,
     this.focus,
-    @deprecated double scale,
     this.maxScale = 2.0,
     this.onTap,
     this.backgroundColor = Colors.black,
     this.placeholder,
-  }) : super(key: key);
+  }) :
+      assert(image != null),
+      assert(maxScale > 0.0),
+      super(key: key);
 
+  /// The image provider.
   final ImageProvider image;
+
+  /// The part of the image that's currently in focus.
   final Rect focus;
+
+  /// The maximum scale. A scale of 2.0 means that one pixel of the image takes
+  /// the space of 4 logical pixels.
   final double maxScale;
+
+  /// A callback for handling taps.
   final GestureTapCallback onTap;
+
+  /// A background color.
   final Color backgroundColor;
+
+  /// A placeholder, being displayed while the image is loading.
   final Widget placeholder;
 
   @override
@@ -30,27 +45,30 @@ class ZoomableImage extends StatefulWidget {
 
 // See /flutter/examples/layers/widgets/gestures.dart
 class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProviderStateMixin {
+  // The actual image.
   ImageStream _imageStream;
   ui.Image _image;
-  Rect _lastFocus;
+
+  // Buffers for the focus of the image.
+  Orientation _previousOrientation;
+  Rect _previousFocus;
+  Size _canvasSize;
 
   AnimationController _controller;
   Offset _startingFocalPoint;
 
+  // Where the top left corner of the image is drawn.
   Offset _previousOffset;
-  Offset _offset; // where the top left corner of the image is drawn
-  Animation _offsetAnimation;
+  Offset _offset;
+  Animation<Offset> _offsetAnimation;
 
+  // Multiplier applied to scale the full image.
   double _previousScale;
-  double _scale; // multiplier applied to scale the full image
-  Animation _scaleAnimation;
-
-  Orientation _previousOrientation;
-
-  Size _canvasSize;
+  double _scale;
+  Animation<double> _scaleAnimation;
 
 
-  /// Initializes animation controller and animations.
+  /// Initializes animation controller.
   void initState() {
     super.initState();
 
@@ -63,29 +81,36 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
     }));
   }
 
-  /// Focuses on a part of the image.
-  void _focus(Rect focusRect, { bool animate = true }) {
-    focusRect = focusRect ?? Rect.fromLTWH(
+  /// Focuses on the part of the image that's enclosed by [focus]. If [focus]
+  /// is [null], the image is scaled and position to fit in the center of the
+  /// available space.
+  /// By setting [animate], one can control whether to animate to the new focus
+  /// or move there directly.
+  void _focus(Rect focus, { bool animate = true }) {
+    print('Focusing on $focus.');
+
+    focus = focus ?? Rect.fromLTWH(
       0.0,
       0.0,
       _image.width.toDouble(),
       _image.height.toDouble()
     );
 
-    final focusSize = focusRect.size;
-    print('Canvas size is $_canvasSize and $focusSize is $focusSize');
+    final focusSize = focus.size;
     final targetScale = math.min(
       _canvasSize.width / focusSize.width,
       _canvasSize.height / focusSize.height,
     );
-    final focusCenter = focusRect.center * targetScale;
+    final focusCenter = focus.center * targetScale;
     final targetOffset = (_canvasSize / 2.0).bottomRight(Offset.zero) - focusCenter;
 
+    // If there should be an animation to the new focus, initialize the curve
+    // and the animations, then start the controller.
+    // If there should be no animation, set the according values directly.
     if (animate) {
-      final offsetCurve = CurvedAnimation(curve: Cubic(0.2, 0.0, 0.5, 1.0), parent: _controller);
-      final scaleCurve = CurvedAnimation(curve: Cubic(0.2, 0.0, 0.5, 1.0), parent: _controller);
-      _offsetAnimation = Tween(begin: _offset, end: targetOffset).animate(offsetCurve);
-      _scaleAnimation = Tween(begin: _scale, end: targetScale).animate(scaleCurve);
+      final curve = CurvedAnimation(curve: Cubic(0.2, 0.0, 0.5, 1.0), parent: _controller);
+      _offsetAnimation = Tween(begin: _offset, end: targetOffset).animate(curve);
+      _scaleAnimation = Tween(begin: _scale, end: targetScale).animate(curve);
       _controller.forward(from: 0.0);
     } else {
       _scale = targetScale;
@@ -96,87 +121,80 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
   /// Centers the image.
   void _centerAndScaleImage() => _focus(null, animate: false);
 
+  /// Zooms in by a factor of 2 on the center of the screen.
   Function() _handleDoubleTap(BuildContext ctx) {
-    return () {
+    return () => setState(() {
       double newScale = _scale * 2;
+
       if (newScale > widget.maxScale) {
-        setState(() => _centerAndScaleImage());
-        return;
-      }
-
-      // We want to zoom in on the center of the screen.
-      // Since we're zooming by a factor of 2, we want the new offset to be twice
-      // as far from the center in both width and height than it is now.
-      Offset center = ctx.size.center(Offset.zero);
-      Offset newOffset = _offset - (center - _offset);
-
-      setState(() {
+        _centerAndScaleImage();
+      } else {
+        // We want the new offset to be twice as far from the center in both
+        // width and height than it is now.
         _scale = newScale;
-        _offset = newOffset;
-      });
-    };
+        _offset = _offset - (ctx.size.center(Offset.zero) - _offset);
+      }
+    });
   }
 
+  /// Save parameters of the moment when the scale starts in order to be able
+  /// to compute deltas when scaling.
   void _handleScaleStart(ScaleStartDetails d) {
     _startingFocalPoint = d.focalPoint;
     _previousOffset = _offset;
     _previousScale = _scale;
   }
 
-  void _handleScaleUpdate(ScaleUpdateDetails d) {
-    double newScale = (_previousScale * d.scale).clamp(0.2, widget.maxScale);
-
-    // Ensure that item under the focal point stays in the same place despite zooming
-    final Offset normalizedOffset =
-        (_startingFocalPoint - _previousOffset) / _previousScale;
+  /// Updates the scale and offset depending on the scale delta.
+  void _handleScaleUpdate(ScaleUpdateDetails d) => setState(() {
+    // Calculate the new scale and ensure that the item under the focal point
+    // stays in the same place despite zooming.
+    final double newScale = (_previousScale * d.scale).clamp(0.0, widget.maxScale);
+    final Offset normalizedOffset = (_startingFocalPoint - _previousOffset) / _previousScale;
     final Offset newOffset = d.focalPoint - normalizedOffset * newScale;
 
-    setState(() {
-      _scale = newScale;
-      _offset = newOffset;
-    });
-  }
+    _scale = newScale;
+    _offset = newOffset;
+  });
 
   @override
   Widget build(BuildContext ctx) {
-    Widget paintWidget() {
-      return CustomPaint(
-        child: Container(color: widget.backgroundColor),
-        foregroundPainter: _ZoomableImagePainter(
-          image: _image,
-          offset: _offset,
-          scale: _scale,
-        ),
-      );
-    }
+    // If the image didn't load yet, display the placeholder. Otherwise, do
+    // more complicated stuff in the layout builder.
+    return _image == null ? widget.placeholder ?? Container() : LayoutBuilder(
+      builder: (ctx, constraints) {
+        // If the orientation changed, center the image and update the canvas
+        // size.
+        Orientation orientation = MediaQuery.of(ctx).orientation;
+        if (orientation != _previousOrientation) {
+          _previousOrientation = orientation;
+          _canvasSize = constraints.biggest;
+          _centerAndScaleImage();
+        }
 
-    // If the image didn't load yet, display the placeholder.
-    if (_image == null) {
-      return widget.placeholder;
-    }
+        // If the focus changed, animate to the new focus.
+        if (_previousFocus != widget.focus) {
+          _previousFocus = widget.focus;
+          _focus(widget.focus);
+        }
 
-    return LayoutBuilder(builder: (ctx, constraints) {
-      Orientation orientation = MediaQuery.of(ctx).orientation;
-      if (orientation != _previousOrientation) {
-        _previousOrientation = orientation;
-        _canvasSize = constraints.biggest;
-        _centerAndScaleImage();
+        // Return the image.
+        return GestureDetector(
+          onTap: widget.onTap,
+          onDoubleTap: _handleDoubleTap(ctx),
+          onScaleStart: _handleScaleStart,
+          onScaleUpdate: _handleScaleUpdate,
+          child: CustomPaint(
+            child: Container(color: widget.backgroundColor),
+            foregroundPainter: _ZoomableImagePainter(
+              image: _image,
+              offset: _offset,
+              scale: _scale,
+            ),
+          ),
+        );
       }
-
-      // If the focus changed, animate to the new focus.
-      if (_lastFocus != widget.focus) {
-        _lastFocus = widget.focus;
-        _focus(widget.focus);
-      }
-
-      return GestureDetector(
-        child: paintWidget(),
-        onTap: widget.onTap,
-        onDoubleTap: _handleDoubleTap(ctx),
-        onScaleStart: _handleScaleStart,
-        onScaleUpdate: _handleScaleUpdate,
-      );
-    });
+    );
   }
 
   @override
@@ -187,7 +205,8 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
 
   @override
   void reassemble() {
-    _resolveImage(); // in case the image cache was flushed
+    // Resolve the image again in case the image cache was flushed.
+    _resolveImage();
     super.reassemble();
   }
 
@@ -196,12 +215,9 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
     _imageStream.addListener(_handleImageLoaded);
   }
 
-  void _handleImageLoaded(ImageInfo info, bool synchronousCall) {
-    print("image loaded: $info");
-    setState(() {
-      _image = info.image;
-    });
-  }
+  void _handleImageLoaded(ImageInfo info, bool synchronousCall) => setState(() {
+    _image = info.image;
+  });
 
   @override
   void dispose() {
@@ -210,8 +226,13 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
   }
 }
 
+/// Painter that paints the given image with the given offset and scale.
 class _ZoomableImagePainter extends CustomPainter {
-  const _ZoomableImagePainter({this.image, this.offset, this.scale});
+  const _ZoomableImagePainter({
+    @required this.image,
+    @required this.offset,
+    @required this.scale
+  });
 
   final ui.Image image;
   final Offset offset;

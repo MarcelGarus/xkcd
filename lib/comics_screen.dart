@@ -152,7 +152,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
           final focus = snapshot.data.focuses == null || currentFocus == null
               ? null : snapshot.data.focuses[currentFocus];
           return ZoomableImage(
-            snapshot.data.image,
+            image: snapshot.data.image,
             focus: focus,
             placeholder: CircularProgressIndicator(),
             backgroundColor: Colors.white,
