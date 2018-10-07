@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:xkcd/bloc.dart';
 import 'package:xkcd/comic.dart';
+import 'package:xkcd/comic_details.dart';
 import 'package:xkcd/zoomable_image.dart';
 
 class ComicsScreen extends StatefulWidget {
@@ -41,6 +42,13 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
     controller.reverse();
   }
 
+  void displayComicDetails() {
+    showBottomSheet(
+      context: context,
+      builder: (context) => ComicDetails()
+    );
+  }
+
 
   EdgeInsets get focusSuggestionPadding => EdgeInsets.only(
     bottom: !focusesExist ? 0.0 : (56 * inverseZoomMode).clamp(0.0, double.infinity)
@@ -50,9 +58,24 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
-    final appBar = Align(
-      alignment: Alignment.bottomCenter,
-      child: _buildAppBar()
+    final suggestionAndAppBar = Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Suggestion(
+          isShown: focusesExist && zoomMode == 0.0,
+          onTap: enterZoomMode,
+          icon: Icon(Icons.view_carousel, color: primaryColor),
+          label: Text('Zoom at the comic tiles',
+            style: TextStyle(
+              color: primaryColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 18.0,
+              letterSpacing: 0.7
+            )
+          ),
+        ),
+        _buildAppBar()
+      ]
     );
 
     final zoomBar = Visibility(
@@ -73,29 +96,10 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       )
     );
 
-    final focusSuggestion = Container(
-      alignment: Alignment.bottomCenter,
-      padding: EdgeInsets.only(bottom: 156.0),
-      child: Suggestion(
-        isShown: focusesExist && zoomMode == 0.0,
-        onTap: enterZoomMode,
-        icon: Icon(Icons.view_carousel, color: primaryColor),
-        label: Text('Zoom at the comic tiles',
-          style: TextStyle(
-            color: primaryColor,
-            fontWeight: FontWeight.w700,
-            fontSize: 18.0,
-            letterSpacing: 0.7
-          )
-        ),
-      )
-    );
-
     return Stack(
       children: <Widget>[
         _buildStreamedComic(Bloc.of(context).current),
-        focusSuggestion,
-        appBar,
+        suggestionAndAppBar,
         zoomBar,
       ]
     );
@@ -121,7 +125,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       ),
       IconButton(
         icon: Icon(Icons.info_outline, color: Colors.white),
-        onPressed: null,
+        onPressed: displayComicDetails,
       ),
     ];
 
@@ -209,7 +213,7 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
 
     controller = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: 150)
+      duration: Duration(milliseconds: 250)
     )..addListener(() => setState(() {
       value = animation.value;
     }));
@@ -235,21 +239,23 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     tick();
 
-    return Transform.translate(
-      offset: Offset(0.0, 56 * (1.0 - value)),
-      child: Padding(
-        padding: EdgeInsets.all(8.0),
-        child: Transform.scale(
-          scale: 0.8,
-          child: FloatingActionButton.extended(
-            backgroundColor: Colors.white,
-            elevation: 8.0,
-            icon: widget.icon,
-            label: widget.label,
-            onPressed: widget.onTap,
+    return ClipRect(
+      child: Transform.translate(
+        offset: Offset(0.0, 56 * (1.0 - value)),
+        child: Padding(
+          padding: EdgeInsets.all(8.0),
+          child: Transform.scale(
+            scale: 0.8,
+            child: FloatingActionButton.extended(
+              backgroundColor: Colors.white,
+              elevation: 8.0,
+              icon: widget.icon,
+              label: widget.label,
+              onPressed: widget.onTap,
+            )
           )
-        )
-      ),
+        ),
+      )
     );
   }
 }
