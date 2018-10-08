@@ -20,11 +20,11 @@ import 'package:http/http.dart' as http;
 /// logical comic.
 @immutable
 class Comic {
-  Comic({
+  Comic._({
     @required this.id,
-    @required this.title,
-    @required this.safeTitle,
-    @required this.imageUrl,
+    this.title,
+    this.safeTitle,
+    this.imageUrl,
     this.published,
     this.alt = '',
     this.link = '',
@@ -35,6 +35,7 @@ class Comic {
     this.isMonochromatic,
     this.focuses
   });
+  factory Comic.create(int id) => Comic._(id: id);
 
   /// The id (provided by api).
   final int id;
@@ -72,11 +73,13 @@ class Comic {
 
 
   /// Fetches comic from the given url.
-  static Future<Comic> _fromUrl(String url) async {
+  Future<Comic> _fromUrl(String url) async {
+    if (title != null) return this;
+
     final jsonString = (await http.get(url)).body;
     final data = json.decode(jsonString);
 
-    return Comic(
+    return this.copyWith(
       id: data['num'],
       title: data['title'],
       safeTitle: data['safe_title'],
@@ -93,20 +96,21 @@ class Comic {
     );
   }
 
-  /// Uses the xkcd api to fetch comic data with the given id.
-  static Future<Comic> fromId(int id) async {
-    return await _fromUrl('http://xkcd.com/$id/info.0.json');
-  }
-
-  /// Uses the xkcd api to fetch the latest comic.
-  static Future<Comic> latest() async {
-    return await _fromUrl('http://xkcd.com/info.0.json');
+  /// Uses the xkcd api to fetch the comic with the correct [id], or the latest
+  /// comic if [id] is [null],
+  Future<Comic> fetchMetadata() async {
+    return await _fromUrl((id == null)
+      ? 'http://xkcd.com/info.0.json'
+      : 'http://xkcd.com/$id/info.0.json'
+    );
   }
 
   /// Loads the image provider. Instead of using [createLocalImageConfiguration],
   /// as is the usual procedure, for now, a dummy image configuration is used,
   /// without taking into account device pixel ratio and stuff like that.
   Future<Comic> loadImage() async {
+    if (this.image != null) return this;
+
     ui.Image image;
 
     // TODO: Should we provide an asset bundle for caching? Do we need to be
@@ -175,6 +179,8 @@ class Comic {
 
   /// Finds focuses for the comic.
   Future<Comic> findFocuses() async {
+    if (this.focuses != null) return this;
+
     return await Future.delayed(Duration(seconds: 2), () {
       return this.copyWith(
         focuses: [
@@ -188,7 +194,7 @@ class Comic {
 
 
   Comic copyWith({
-    String id,
+    int id,
     String title,
     String safeTitle,
     String imageUrl,
@@ -201,7 +207,7 @@ class Comic {
     ui.Image inversedImage,
     bool isMonochromatic,
     List<Rect> focuses
-  }) => Comic(
+  }) => Comic._(
     id: id ?? this.id,
     title: title ?? this.title,
     safeTitle: safeTitle ?? this.safeTitle,

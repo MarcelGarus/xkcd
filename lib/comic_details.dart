@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:xkcd/bloc.dart';
 import 'package:xkcd/comic.dart';
 
 class ComicDetails extends StatelessWidget {
-  ComicDetails();
+  ComicDetails({ @required this.comicStream });
+
+  final Stream<Comic> comicStream;
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +15,7 @@ class ComicDetails extends StatelessWidget {
         padding: EdgeInsets.all(16.0),
         //alignment: Alignment.center,
         child: StreamBuilder(
-          stream: Bloc.of(context).current,
+          stream: comicStream,
           builder: (context, AsyncSnapshot<Comic> snapshot) {
             return (!snapshot.hasData)
               ? CircularProgressIndicator()

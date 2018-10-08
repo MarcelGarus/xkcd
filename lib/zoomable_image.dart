@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
@@ -9,15 +8,16 @@ import 'package:flutter/rendering.dart';
 /// multitouch.
 class ZoomableImage extends StatefulWidget {
   ZoomableImage({
+    Key key,
     @required this.image,
     this.focus,
+    this.isInteractive = false,
     this.onMoved,
     this.onCentered,
     this.backgroundColor = Colors.black,
-    this.placeholder,
   }) :
       assert(image != null),
-      super();
+      super(key: key);
 
   /// The image.
   final ui.Image image;
@@ -26,14 +26,12 @@ class ZoomableImage extends StatefulWidget {
   final Rect focus;
 
   /// Whether you can move the image with just one finger.
+  final bool isInteractive;
   final Function onMoved; // TODO: return the current focus
   final VoidCallback onCentered;
 
   /// A background color.
   final Color backgroundColor;
-
-  /// A placeholder, being displayed while the image is loading.
-  final Widget placeholder;
 
   @override
   _ZoomableImageState createState() => _ZoomableImageState();
@@ -41,6 +39,8 @@ class ZoomableImage extends StatefulWidget {
 
 // See /flutter/examples/layers/widgets/gestures.dart
 class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProviderStateMixin {
+  ui.Image _previousImage;
+
   // Buffers for the focus of the image.
   Orientation _previousOrientation;
   Rect _previousFocus;
@@ -55,6 +55,12 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
   // Multiplier applied to scale the full image.
   double _previousScale;
   double _scale;
+
+
+  void initState() {
+    super.initState();
+    print('Zoomable image created for image ${widget.image}.');
+  }
 
 
   /// Focuses on the part of the image that's enclosed by [focus]. If [focus]
@@ -148,7 +154,7 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
     // If the image didn't load yet, display the placeholder. Otherwise, do
     // more complicated stuff in the layout builder.
     assert(widget.image.width > 0);
-    return widget.image == null ? widget.placeholder ?? Container() : LayoutBuilder(
+    return LayoutBuilder(
       builder: (ctx, constraints) {
         // If the orientation changed, center the image and update the canvas
         // size.
@@ -156,6 +162,12 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
         if (orientation != _previousOrientation) {
           _previousOrientation = orientation;
           _canvasSize = constraints.biggest;
+          _centerAndScaleImage(notifyCallback: false);
+        }
+
+        // If the image changed, center it.
+        if (_previousImage != widget.image) {
+          _previousImage = widget.image;
           _centerAndScaleImage(notifyCallback: false);
         }
 
@@ -167,9 +179,9 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
 
         // Return the image.
         return GestureDetector(
-          onDoubleTap: () => _handleDoubleTap(ctx),
-          onScaleStart: _handleScaleStart,
-          onScaleUpdate: _handleScaleUpdate,
+          onDoubleTap: widget.isInteractive ? () => _handleDoubleTap(ctx) : null,
+          onScaleStart: widget.isInteractive ? _handleScaleStart : null,
+          onScaleUpdate: widget.isInteractive ? _handleScaleUpdate : null,
           child: CustomPaint(
             child: Container(color: widget.backgroundColor),
             foregroundPainter: _ZoomableImagePainter(

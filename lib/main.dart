@@ -8,7 +8,6 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      bloc: Bloc(),
       child: MaterialApp(
         title: 'xkcd',
         theme: ThemeData(
