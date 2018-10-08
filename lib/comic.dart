@@ -151,6 +151,7 @@ class Comic {
         final ui.Image image = imageInfo.image;
         final ByteData imageData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
         final Iterable<Color> pixels = _getImagePixels(imageData, image.width, image.height);
+        print(pixels);
       });
   }
 
