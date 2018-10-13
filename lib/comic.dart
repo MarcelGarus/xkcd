@@ -11,10 +11,10 @@ import 'package:http/http.dart' as http;
 /// 
 /// Over time, new information about a comic become available, i.e. through:
 /// * The xkcd api returned some json.
-/// * The image loaded.
-/// * An analysis of the images monochromacy finished.
+/// * The comic image loaded.
+/// * An analysis of the comic's color spectrum finished.
 /// * The inverse image was calculated.
-/// * AI detected comic borders.
+/// * AI detected comic tiles.
 /// * ...
 /// As this [Comic] is immutable, new [Comic]s may be created for the same
 /// logical comic.
@@ -33,7 +33,7 @@ class Comic {
     this.image,
     this.inversedImage,
     this.isMonochromatic,
-    this.focuses
+    this.tiles
   });
   factory Comic.create(int id) => Comic._(id: id);
 
@@ -68,8 +68,8 @@ class Comic {
   /// Whether the image is monochromatic.
   final bool isMonochromatic;
 
-  /// Focus points of the comic.
-  final List<Rect> focuses;
+  /// The tiles of the comic.
+  final List<Rect> tiles;
 
 
   /// Fetches comic from the given url.
@@ -178,13 +178,13 @@ class Comic {
 
   // TODO: ---------- end of testing code ----------
 
-  /// Finds focuses for the comic.
-  Future<Comic> findFocuses() async {
-    if (this.focuses != null) return this;
+  /// Detects tiles in the comic.
+  Future<Comic> detectTiles() async {
+    if (this.tiles != null) return this;
 
     return await Future.delayed(Duration(seconds: 2), () {
       return this.copyWith(
-        focuses: [
+        tiles: [
           Rect.fromLTWH(0.0, -5.0, 250.0, 390.0),
           Rect.fromLTWH(270.0, -5.0, 220.0, 390.0),
           Rect.fromLTWH(500.0, -5.0, 220.0, 390.0),
@@ -207,7 +207,7 @@ class Comic {
     ui.Image image,
     ui.Image inversedImage,
     bool isMonochromatic,
-    List<Rect> focuses
+    List<Rect> tiles
   }) => Comic._(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -221,8 +221,8 @@ class Comic {
     image: image ?? this.image,
     inversedImage: inversedImage ?? this.inversedImage,
     isMonochromatic: isMonochromatic ?? this.isMonochromatic,
-    focuses: focuses ?? this.focuses
+    tiles: tiles ?? this.tiles
   );
 
-  String toString() => 'Comic #$id: "$safeTitle". Image: $image Focuses: $focuses';
+  String toString() => 'Comic #$id: "$safeTitle". Image: $image Tiles: $tiles';
 }

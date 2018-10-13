@@ -54,7 +54,7 @@ class ComicNavigation extends StatefulWidget {
 class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProviderStateMixin {
   bool _previouslyShown = false;
   double visibility = 0.0;
-  double get inverseZoomMode => 1.0 - visibility;
+  double get inverseVisibility => 1.0 - visibility;
   AnimationController controller;
   Animation<double> animation;
 
@@ -70,7 +70,8 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
     animation = CurvedAnimation(curve: Cubic(0.0, 0.0, 0.6, 1.0), parent: controller);
   }
 
-  _onVisibleChanged() {
+  /// Animates the bar.
+  void _onVisibleChanged() {
     _previouslyShown = widget.show;
 
     if (widget.show) {
@@ -80,7 +81,7 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
     }
   }
 
-  Offset get offset => Offset(0.0, inverseZoomMode * 56.0);
+  Offset get offset => Offset(0.0, inverseVisibility * 56.0);
 
   @override
   Widget build(BuildContext context) {
@@ -107,6 +108,7 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
     );
   }
 
+  /// Builds content without specific progress.
   Widget buildGeneralContent() {
     return InkResponse(
       onTap: () => widget.onChanged(null),
@@ -124,6 +126,7 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
     );
   }
 
+  /// Builds content for a specific progress.
   Widget buildProgressContent() {
     final primaryColor = Theme.of(context).primaryColor;
     final items = [

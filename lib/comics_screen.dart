@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:xkcd/bloc.dart';
 import 'package:xkcd/comic.dart';
@@ -30,6 +31,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
   void initState() {
     super.initState();
 
+    // Initialize controllers and the focus animation.
     focusController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 200)
@@ -41,25 +43,28 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       parent: focusController
     );
 
+    // Listen to changes to the current comic.
     Bloc.of(context).current.listen((Comic comic) {
-      if ((_previousComic?.id ?? -1) != (comic?.id ?? -1)) {
-        // We just got a new comic, so exit the zoom mode.
-        print('New comic: $comic');
+      if ((_previousComic?.id ?? -1) == (comic?.id ?? -1))
+        return;
 
-        _previousComic = comic;
-        _exitZoomMode(comic);
-      }
+      // We just got a new comic. Time to exit the zoom mode.
+      print('New comic: $comic');
+      _previousComic = comic;
+      _exitZoomMode(comic);
     });
   }
 
-  void _enterZoomMode(Comic comic, { bool initFocus = false }) {
+  /// Enters the zoom mode. If a comic is provided, the first tile is focused.
+  void _enterZoomMode({ Comic comic }) {
     if (inZoomMode) return;
 
     inZoomMode = true;
-    if (initFocus)
-      _goToFocus(comic, 0);
+    if (comic != null)
+      _goToTile(comic, 0);
   }
 
+  /// Returns the focus for the whole comic to be visible.
   Rect _getWholeImageFocus(Comic comic) {
     return Rect.fromLTRB(
       0.0,
@@ -69,43 +74,57 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
     );
   }
 
+  /// Exits the zoom mode.
   void _exitZoomMode(Comic comic) {
     if (!inZoomMode) return;
 
-    setState(() {
-      inZoomMode = false;
-      progress = null;
-      
-      beginFocus = focus ?? _getWholeImageFocus(comic);
-      endFocus = _getWholeImageFocus(comic);
-      focusController.reset();
-      focusController.forward();
-    });
+    inZoomMode = false;
+    progress = null;
+    
+    beginFocus = focus ?? _getWholeImageFocus(comic);
+    endFocus = _getWholeImageFocus(comic);
+    focusController.reset();
+    focusController.forward();
   }
 
-  void _goToFocus(Comic comic, int index) {
+  /// Goes to a specific tile of a comic.
+  void _goToTile(Comic comic, int index) {
     if (index == null)
       _exitZoomMode(comic);
     else {
-      if (index > (comic.focuses?.length ?? -1))
+      if (index > (comic.tiles?.length ?? -1))
         return;
 
       progress = index;
 
       beginFocus = focus ?? _getWholeImageFocus(comic);
-      endFocus = comic.focuses[progress];
+      endFocus = comic.tiles[progress];
       focusController.reset();
       focusController.forward();
     }
   }
 
-  void _onFocusMoved(Comic comic, Rect newFocus) {
+  void _onFocusMovedManually(Comic comic, Rect newFocus) => setState(() {
     focusController.stop();
     focus = newFocus;
     if (!inZoomMode)
-      _enterZoomMode(comic);
-    else setState(() {});
-  }
+      _enterZoomMode();
+
+    print('The new focus is $focus.');
+    final visibilities = comic.tiles.map((tile) {
+      final tileArea = max(0, tile.width * tile.height);
+      final intersect = tile.intersect(focus);
+      final intersectArea = max(0, intersect.width * intersect.height);
+      return intersectArea / tileArea;
+    }).toList();
+    final mostVisible = visibilities.reduce(max);
+    final mostVisibleIndex = visibilities.indexOf(mostVisible);
+    final sum = visibilities.reduce((a, b) => a + b);
+    if (mostVisible > 0.5 && mostVisible / sum > 0.5)
+      progress = mostVisibleIndex;
+    else
+      progress = null;
+  });
 
 
   @override
@@ -142,10 +161,10 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
         final comic = snapshot.data;
 
         return Suggestion(
-          show: !inZoomMode && (comic?.focuses?.length ?? 0) > 0,
+          show: !inZoomMode && (comic?.tiles?.length ?? 0) > 0,
           onTap: comic == null
-            ? null
-            : () => _enterZoomMode(comic, initFocus: true),
+            ? () {}
+            : () => _enterZoomMode(comic: comic),
           icon: Icon(Icons.view_carousel, color: primaryColor),
           label: Text('Zoom at the comic tiles',
             style: TextStyle(
@@ -168,9 +187,9 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
 
         return ComicNavigation(
           show: inZoomMode,
-          progress: comic?.focuses == null ? null : progress,
-          maxProgress: comic?.focuses?.length ?? 0,
-          onChanged: (progress) => _goToFocus(comic, progress),
+          progress: comic?.tiles == null ? null : progress,
+          maxProgress: comic?.tiles?.length ?? 0,
+          onChanged: (progress) => _goToTile(comic, progress),
           onClose: () => _exitZoomMode(comic),
         );
       }
@@ -195,7 +214,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
             focus: interactive ? focus : null,
             isInteractive: interactive,
             backgroundColor: Colors.white,
-            onMoved: (Rect rect) => _onFocusMoved(comic, rect),
+            onMoved: (Rect rect) => _onFocusMovedManually(comic, rect),
             onCentered: () => _exitZoomMode(comic)
           );
         },

@@ -1,11 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 
-/// A custom curve that starts and ends at zero, but moves energetically back
-/// and forth in between.
-class _ExcitementCurve extends Curve {
-  double transform(double t) => (t*t-t) * sin(20 * t);
-}
 
 /// A suggestion chip to be displayed at the bottom of the screen.
 /// 
@@ -47,7 +42,6 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
   double rotation = 0.0;
   AnimationController controller;
   Animation<double> positionAnimation;
-  Animation<double> rotationAnimation;
 
   /// Initializes the controller and the animations.
   void initState() {
@@ -57,11 +51,11 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
       vsync: this,
       duration: Duration(milliseconds: 250)
     )..addListener(() => setState(() {
+      final t = controller.value;
       position = 56 * (1.0 - positionAnimation.value);
-      rotation = lastShown ? 0.2 * rotationAnimation.value : 0.0;
+      rotation = lastShown ? 0.2 * (t*t-t) * sin(20 * t) : 0.0;
     }));
     positionAnimation = CurvedAnimation(curve: ElasticOutCurve(), parent: controller);
-    rotationAnimation = CurvedAnimation(curve: _ExcitementCurve(), parent: controller);
   }
 
   /// Called every frame. If the widget's [show] property changed, we animate.

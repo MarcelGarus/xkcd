@@ -4,8 +4,18 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-/// A widget displaying a zoomable image. It can be touched and scaled using
+typedef OnMoveListener(Rect focus);
+
+/// A widget displaying a zoomable image. It can be interacted with using
 /// multitouch.
+/// 
+/// This widget holds no state. Rather, you provide your own [focus], thereby
+/// describing what part of the image is visible. If the user interacts with
+/// the image, the [onMoved] callback will be called with a new proposed focus
+/// that fits to the interaction. You then have to rebuild this widget with the
+/// new focus set as the [focus] property.
+/// 
+/// This file is based on the package https://pub.dartlang.org/packages/zoomable_image.
 class ZoomableImage extends StatefulWidget {
   ZoomableImage({
     Key key,
@@ -27,7 +37,9 @@ class ZoomableImage extends StatefulWidget {
 
   /// Whether you can move the image with just one finger.
   final bool isInteractive;
-  final Function onMoved; // TODO: return the current focus
+
+  // Callbacks.
+  final OnMoveListener onMoved;
   final VoidCallback onCentered;
 
   /// A background color.

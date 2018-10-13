@@ -163,7 +163,7 @@ class ComicLibrary {
     comic = await comic.loadImage().catchError(print);
     callback(comic);
 
-    comic = await comic.findFocuses().catchError(print);
+    comic = await comic.detectTiles().catchError(print);
     callback(comic);
   }
 }
