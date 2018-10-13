@@ -8,7 +8,7 @@ def get_file_name(id):
 
 def get_file_name_annotation(id):
   id_with_leading_zeroes = '0' * (4 - len(str(id))) + str(id)
-  return 'tiles/%s.txt' % (id_with_leading_zeroes)
+  return 'tiles_user/%s.txt' % (id_with_leading_zeroes)
 
 
 start = (0, 0)
