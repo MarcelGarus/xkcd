@@ -1,100 +1,104 @@
 import cv2
 import numpy as np
+import os.path
 
 def get_file_name(id):
   id_with_leading_zeroes = '0' * (4 - len(str(id))) + str(id)
   return 'comics/%s.png' % (id_with_leading_zeroes)
 
+def get_file_name_annotation(id):
+  id_with_leading_zeroes = '0' * (4 - len(str(id))) + str(id)
+  return 'tiles/%s.txt' % (id_with_leading_zeroes)
 
-mouse_x = 0
-mouse_y = 0
-clicked = False
-split_row = True
+
+start = (0, 0)
+end = (0, 0)
+dragging = False
+done = False
 
 # Handles mouse events.
-def click_to_split(event, x, y, flags, param):
-  global mouse_x, mouse_y, clicked
+def drag_to_annotate_tile(event, x, y, flags, param):
+  global start, end, dragging, done
+
+  if event == cv2.EVENT_LBUTTONDOWN:
+    start = (x, y)
+    end = start
+    dragging = True
   if event == cv2.EVENT_MOUSEMOVE:
-    mouse_x, mouse_y = x, y
-  elif event == cv2.EVENT_LBUTTONDOWN:
-    clicked = True
+    end = (x, y)
+  elif event == cv2.EVENT_LBUTTONUP:
+    end = (x, y)
+    dragging = False
+    done = True
 
-# Displays a window to annotate the comic. Returns either:
-# * False if comic should be annotated again (the user made a mistake)
-# * 0 if the comic is atomic
-# * a tuple of bool and number if the comic can be split
-#   - the bool indicates whether the tiles are next to each other
-#   - the number indicates the fraction of the split
-def split_comic(id, original_img):
-  global mouse_x, mouse_y, clicked, split_row
+# Displays a window to annotate the comic tiles. Returns a list of the tiles'
+# rectangle positions.
+def annotate_comic(id):
+  global start, end, dragging, done
 
+  print("Please annotate the comic by dragging an annotation around the tiles. When")
+  print("you're done, press space. You can also press 'z' to undo the last annotation.")
+  print("When annotating, please notice:")
+  print("* the rectangle should overlap with the border of the comic tile")
+  print("* on squiggly or non-rectangular focus areas, choose the smallest rect that")
+  print("  includes everything")
+
+  snapshots = [ cv2.imread(get_file_name(id)) ]
+  tiles = []
   window_name = 'Comic %d' % (id)
 
   cv2.namedWindow(window_name)
-  cv2.setMouseCallback(window_name, click_to_split)
+  cv2.setMouseCallback(window_name, drag_to_annotate_tile)
 
   while True:
-    img = np.array(original_img)
-    width, height = len(img[0]), len(img)
+    img = np.array(snapshots[-1])
 
-    # display image with a bar at the mouse position
-    start = (mouse_x,0) if split_row else (0,mouse_y)
-    end = (mouse_x,height) if split_row else (width,mouse_y)
-    cv2.line(img, start, end, 0, 2)
+    # display rectangle
+    if dragging:
+      cv2.rectangle(img, start, end, (0, 0, 255), 2)
     cv2.imshow(window_name, img)
 
     key = cv2.waitKey(20) & 0xFF
-    if key == 27:
-      cv2.destroyAllWindows()
-      break
-    elif key == ord('s'):
-      split_row = not split_row
-    elif key == ord(' '):
-      cv2.destroyAllWindows()
-      return 0
-    elif key == ord('r'):
+    if key == 27: # ESC to exit
       cv2.destroyAllWindows()
       return False
-
-    if clicked:
-      clicked = False
+    elif key == ord(' '):
       cv2.destroyAllWindows()
-      fraction = mouse_x / width if split_row else mouse_y / height
-      print('Fraction is %f' % (fraction))
-      return (split_row, fraction)
+      break
+    elif key == ord('z') and len(tiles) > 0:
+      snapshots = snapshots[:-1]
+      tiles = tiles[:-1]
+      print('Tiles: %s' % (str(tiles)))
+
+    if done:
+      done = False
+      img = np.array(snapshots[-1])
+      cv2.rectangle(img, start, end, (255, 0, 0), 2)
+      snapshots.append(img)
+      tiles.append((start, end))
+      print('Tiles: %s' % (str(tiles)))
+
+  # done annotating, saving the result
+  f = open(get_file_name_annotation(id), 'wb')
+  for tile in tiles:
+    line = '%d %d %d %d\n' % (tile[0][0], tile[0][1], tile[1][0], tile[1][1])
+    f.write(line.encode('utf-8'))
+  f.close()
+  return True
 
 
-# Recursively annotates comic.
-def annotate_comic(id, img = False):
-  print('Please annotate the comic.')
-  print('* left mouse button for separation')
-  print('* space if comic is atomic')
-  print('* \'r\' to retry / undo')
-  print('* ESC to exit')
-
-  # If this is the root of the call stack, load the image.
-  if img is False:
-    img = cv2.imread(get_file_name(id), cv2.IMREAD_GRAYSCALE)
-  width, height = len(img[0]), len(img)
-  
-  res = split_comic(id, img)
-
-  if res is None:
-    return
-  elif res is False:
-    print('Retry.')
-  elif res is 0:
-    print('The comic is atomic.')
-  else:
-    split_row, fraction = res
-    print('The comic is split at %f. Are comics next to each other? %s' % (fraction, str(split_row)))
-
-    boundary = int(width * fraction) if split_row else int(height * fraction)
-    first_img = img[:,:boundary] if split_row else img[:boundary,:]
-    second_img = img[:,boundary:] if split_row else img[boundary:,:]
-    annotate_comic(id, first_img)
-    annotate_comic(id, second_img)
+def annotate_all_comics():
+  for id in range(0, 10000):
+    if os.path.isfile(get_file_name(id)):
+      if os.path.isfile(get_file_name_annotation(id)):
+        print('Comic %d already annotated.')
+      else:
+        success = annotate_comic(id)
+        if not success:
+          return
+    #else:
+    #  print('Comic ')
 
 
-annotate_comic(1)
+annotate_all_comics()
 print('Exiting.')
