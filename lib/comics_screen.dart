@@ -23,11 +23,23 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
   int progress;
   Rect focus;
   AnimationController focusController;
-  Animation<Rect> focusAnimation;
+  CurvedAnimation focusAnimation;
+  Rect beginFocus, endFocus; // Focuses for animation.
 
 
   void initState() {
     super.initState();
+
+    focusController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 200)
+    )..addListener(() => setState(() {
+      focus = Rect.lerp(beginFocus, endFocus, focusAnimation.value ?? 0.0);
+    }));
+    focusAnimation = CurvedAnimation(
+      curve: Cubic(0.3, 0.0, 0.7, 1.0),
+      parent: focusController
+    );
 
     Bloc.of(context).current.listen((Comic comic) {
       if ((_previousComic?.id ?? -1) != (comic?.id ?? -1)) {
@@ -35,7 +47,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
         print('New comic: $comic');
 
         _previousComic = comic;
-        _exitZoomMode();
+        _exitZoomMode(comic);
       }
     });
   }
@@ -48,25 +60,51 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       _goToFocus(comic, 0);
   }
 
-  void _exitZoomMode() {
+  Rect _getWholeImageFocus(Comic comic) {
+    return Rect.fromLTRB(
+      0.0,
+      0.0,
+      comic.image.width.toDouble(),
+      comic.image.height.toDouble()
+    );
+  }
+
+  void _exitZoomMode(Comic comic) {
     if (!inZoomMode) return;
 
     setState(() {
       inZoomMode = false;
       progress = null;
-      focus = null;
+      
+      beginFocus = focus ?? _getWholeImageFocus(comic);
+      endFocus = _getWholeImageFocus(comic);
+      focusController.reset();
+      focusController.forward();
     });
   }
 
   void _goToFocus(Comic comic, int index) {
-    assert(index == null || index < comic.focuses.length);
-
     if (index == null)
-      _exitZoomMode();
-    else setState(() {
+      _exitZoomMode(comic);
+    else {
+      if (index > (comic.focuses?.length ?? -1))
+        return;
+
       progress = index;
-      focus = comic.focuses[progress];
-    });
+
+      beginFocus = focus ?? _getWholeImageFocus(comic);
+      endFocus = comic.focuses[progress];
+      focusController.reset();
+      focusController.forward();
+    }
+  }
+
+  void _onFocusMoved(Comic comic, Rect newFocus) {
+    focusController.stop();
+    focus = newFocus;
+    if (!inZoomMode)
+      _enterZoomMode(comic);
+    else setState(() {});
   }
 
 
@@ -133,7 +171,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
           progress: comic?.focuses == null ? null : progress,
           maxProgress: comic?.focuses?.length ?? 0,
           onChanged: (progress) => _goToFocus(comic, progress),
-          onClose: _exitZoomMode,
+          onClose: () => _exitZoomMode(comic),
         );
       }
     );
@@ -151,18 +189,14 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
             return CircularProgressIndicator();
 
           print('Building zoomable image with focus $focus.');
+          final comic = snapshot.data;
           return ZoomableImage(
-            image: snapshot.data.image,
+            image: comic.image,
             focus: interactive ? focus : null,
             isInteractive: interactive,
             backgroundColor: Colors.white,
-            onMoved: (Rect rect) {
-              focus = rect;
-              if (!inZoomMode)
-                _enterZoomMode(snapshot.data);
-              else setState(() {});
-            },
-            onCentered: _exitZoomMode,
+            onMoved: (Rect rect) => _onFocusMoved(comic, rect),
+            onCentered: () => _exitZoomMode(comic)
           );
         },
       )
