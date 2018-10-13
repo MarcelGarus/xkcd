@@ -11,4 +11,5 @@ build/
 .idea
 .metadata
 
-laboratory/comics/
+lab/comics/
+lab/*.swp
