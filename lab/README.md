@@ -4,10 +4,10 @@ The lab is responsible for experimental, cool stuff that makes the app actually
 smart. For now, you can read this as "detecting the comic tiles".
 
 The detection of comics happens in this process:
-* **Downloading the tiles:** All the comics are downloaded by running the
+* **Downloading the comics:** All the comics are downloaded by running the
   `fetchcomics.py` file, which simply queries the xkcd api for comic metadata
   and then downloads the comics from the given urls into the `comics` folder
-  (not visible on Github, as comics folder is `.gitignore`d).
+  (not visible on Github, as `comics` folder is `.gitignore`d).
 * **Detection of tiles:** For most comics, you can just detect the tiles using
   the `detect.py` script. It floods the background of the image and then
   extracts comic tiles. Have a look at this, it's really interesting!
