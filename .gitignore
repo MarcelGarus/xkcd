@@ -12,5 +12,5 @@ build/
 .metadata
 
 lab/*.swp
+lab/__pycache__/
 lab/comics/
-lab/tiles/
