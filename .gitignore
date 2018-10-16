@@ -11,6 +11,8 @@ build/
 .idea
 .metadata
 
+lib/*.swp
 lab/*.swp
 lab/__pycache__/
 lab/comics/
+

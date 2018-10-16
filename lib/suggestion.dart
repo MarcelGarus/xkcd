@@ -37,7 +37,7 @@ class Suggestion extends StatefulWidget {
 }
 
 class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateMixin {
-  bool lastShown = false;
+  bool lastShown;
   double position = 0.0;
   double rotation = 0.0;
   AnimationController controller;
@@ -50,18 +50,26 @@ class _SuggestionState extends State<Suggestion> with SingleTickerProviderStateM
     controller = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 250)
-    )..addListener(() => setState(() {
-      final t = controller.value;
-      position = 56 * (1.0 - positionAnimation.value);
-      rotation = lastShown ? 0.2 * (t*t-t) * sin(20 * t) : 0.0;
-    }));
+    )..addListener(_update);
     positionAnimation = CurvedAnimation(curve: ElasticOutCurve(), parent: controller);
   }
 
-  /// Called every frame. If the widget's [show] property changed, we animate.
+  void _update() => setState(() {
+    final double t = controller.value ?? 0.0;
+    position = 56 * (1.0 - positionAnimation.value);
+    rotation = lastShown ?? false ? 0.2 * (t * t - t) * sin(20 * t) : 0.0;
+  });
+
+  /// Called every build. If the widget's [show] property changed, we animate.
   void _tick() {
     if (widget.show == lastShown)
       return;
+
+    if (lastShown == null) {
+      lastShown = widget.show;
+      _update();
+      return;
+    }
 
     if (widget.show)
       controller.forward();

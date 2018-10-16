@@ -182,15 +182,39 @@ class Comic {
   Future<Comic> detectTiles() async {
     if (this.tiles != null) return this;
 
-    return await Future.delayed(Duration(seconds: 2), () {
-      return this.copyWith(
-        tiles: [
-          Rect.fromLTWH(0.0, -5.0, 250.0, 390.0),
-          Rect.fromLTWH(270.0, -5.0, 220.0, 390.0),
-          Rect.fromLTWH(500.0, -5.0, 220.0, 390.0),
-        ]
-      );
-    });
+    String comicWithLeadingZeroes = '$id';
+    while (comicWithLeadingZeroes.length < 4)
+      comicWithLeadingZeroes = '0$comicWithLeadingZeroes';
+
+    final url = 'https://github.com/marcelgarus/xkcd/blob/master/lab/tiles/$comicWithLeadingZeroes.txt?raw=true';
+    final response = await http.get(url);
+    if (response.statusCode != 200) {
+      return this.copyWith(tiles: []);
+    }
+   
+    final lines = response.body.split('\n');
+    final tiles = <Rect>[];
+
+    for (final line in lines) {
+      if (line.length == 0)
+        continue;
+
+      try {
+        final values = line.split(' ');
+        tiles.add(Rect.fromLTRB(
+          int.parse(values[0]).toDouble(),
+          int.parse(values[1]).toDouble(),
+          int.parse(values[2]).toDouble(),
+          int.parse(values[3]).toDouble()
+        ));
+      } catch (e) {
+        print('Warning: Comic $id has a corrupt tile: $line');
+        print(e);
+        return this;
+      }
+    }
+
+    return (tiles.length > 1) ? this.copyWith(tiles: tiles) : this;
   }
 
 
@@ -224,5 +248,42 @@ class Comic {
     tiles: tiles ?? this.tiles
   );
 
-  String toString() => 'Comic #$id: "$safeTitle". Image: $image Tiles: $tiles';
+  @override
+  bool operator== (Object other) {
+    return other is Comic
+      && id == other.id
+      && title == other.title
+      && safeTitle == other.safeTitle
+      && imageUrl == other.imageUrl
+      && published == other.published
+      && alt == other.alt
+      && link == other.link
+      && news == other.news
+      && transcript == other.transcript
+      && (image == null) == (other.image == null)
+      && (inversedImage == null) == (other.inversedImage == null)
+      && isMonochromatic == other.isMonochromatic
+      && tiles == other.tiles;
+  }
+
+  @override
+  int get hashCode {
+    return hashValues(
+      id,
+      title,
+      safeTitle,
+      imageUrl,
+      published,
+      alt,
+      link,
+      news,
+      transcript,
+      (image == null),
+      (inversedImage == null),
+      isMonochromatic,
+      tiles
+    );
+  }
+
+  String toString() => 'Comic #$id: ${safeTitle == null ? '<no title yet>' : '"$safeTitle"'}. Image: $image Tiles: $tiles';
 }

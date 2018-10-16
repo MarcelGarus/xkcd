@@ -111,6 +111,11 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       _enterZoomMode();
 
     print('The new focus is $focus.');
+    if (comic.tiles == null)
+      return;
+
+    // Check how visible each of the tiles is, then maybe choose the most
+    // visible one as the current progress.
     final visibilities = comic.tiles.map((tile) {
       final tileArea = max(0, tile.width * tile.height);
       final intersect = tile.intersect(focus);
@@ -257,7 +262,7 @@ class _ComicAppBarState extends State<ComicAppBar> {
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,
-              fontSize: 18.0,
+              fontSize: 12.0,
             )
           ));
         }

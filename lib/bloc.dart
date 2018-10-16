@@ -14,16 +14,16 @@ class Bloc {
   }
 
   ComicLibrary comicLibrary;
-  int currentId = 1234;
+  int currentId = 6;
   int get previousId => currentId - 1;
   int get nextId => currentId + 1;
 
   final _previousSubject = BehaviorSubject<Comic>();
   final _currentSubject = BehaviorSubject<Comic>();
   final _nextSubject = BehaviorSubject<Comic>();
-  Stream<Comic> get previous => _previousSubject.stream;
-  Stream<Comic> get current => _currentSubject.stream;
-  Stream<Comic> get next => _nextSubject.stream;
+  Stream<Comic> get previous => _previousSubject.stream.distinct();
+  Stream<Comic> get current => _currentSubject.stream.distinct();
+  Stream<Comic> get next => _nextSubject.stream.distinct();
 
 
   Future<void> _initialize() async {
@@ -39,6 +39,7 @@ class Bloc {
   }
 
   void _onComicUpdated(Comic comic) {
+    //@ignore TODO
     final BehaviorSubject subject =
       comic.id == previousId ? _previousSubject :
       comic.id == currentId ? _currentSubject :
@@ -76,7 +77,7 @@ class _BlocProviderState extends State<BlocProvider> {
   final Bloc bloc = Bloc();
 
   void initState() {
-    super.initState();
+  super.initState();
     bloc._initialize().catchError((e) {
       print('An error occurred when initializing the BloC: $e');
     });
@@ -112,6 +113,7 @@ typedef ComicUpdatedCallback(Comic comic);
 /// Manages all the comics from id.
 class ComicLibrary {
   ComicLibrary(this.callback) {
+    Timer.periodic(Duration(seconds: 10), (Timer t) => _work());
     Future(_work);
   }
 
@@ -133,16 +135,13 @@ class ComicLibrary {
   Future<void> _work() async {
     print('Worker running.');
 
-    for (final entry in interests.entries) {
-      if (entry.value > 0.5)
-        await loadComic(entry.key, (comic) {
-          assert(comic != null);
-          comics[comic.id] = comic;
-          callback(comic);
-        });
+    for (final entry in interests.entries.toList()) {
+      await loadComic(entry.key, (comic) {
+        assert(comic != null);
+        comics[comic.id] = comic;
+        callback(comic);
+      });
     }
-
-    Future.delayed(Duration(seconds: 2), _work);
   }
 
   /// Loads the [Comic] with the given [id]. If the [id] is [null], the latest
@@ -154,12 +153,15 @@ class ComicLibrary {
   Future<void> loadComic(int id, ComicUpdatedCallback callback) async {
     assert(id != null);
 
+    if (interests[id] == 0.0) return;
     Comic comic = comics[id] ?? Comic.create(id);
     callback(comic);
 
+    if (interests[id] < 0.2) return;
     comic = await comic.fetchMetadata().catchError(print);
     callback(comic);
 
+    if (interests[id] < 0.5) return;
     comic = await comic.loadImage().catchError(print);
     callback(comic);
 
@@ -167,3 +169,4 @@ class ComicLibrary {
     callback(comic);
   }
 }
+
