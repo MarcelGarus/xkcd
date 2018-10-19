@@ -4,29 +4,29 @@ import 'package:flutter/material.dart';
 typedef NavigationChangedCallback(int index);
 
 /// A widget to be used as an alternative for the bottom app bar for navigating
-/// through multiple focus areas. Includes:
+/// through multiple comic tiles. Includes:
 /// * A button to close the app.
-/// * A discrete slider for seeing your progress as well as quickly navigating
-///   multiple steps at once.
-/// * A numeric indicator for the current progress.
-/// * Buttons for navigating to the previous and next step.
+/// * A discrete slider for skimming through tiles as well as seeing your
+///   progress.
+/// * A numeric indicator for the current tile.
+/// * Buttons for navigating to the previous and next tile.
 ///   - If at the first comic, the previous button is not displayed.
 ///   - If at the last comic, the next button morphes into a close button. TODO animate!
 /// 
-/// You just provide the [progress], the [maxProgress] as well as callbacks
-/// to be notified [onChanged] and [onClose]. If [progress] is [null], no
-/// progress UI is displayed but a general zoom info instead.
+/// You just provide the [tile], the [numTiles] as well as callbacks to be
+/// notified [onChanged] and [onClose]. If [tile] is [null], no progress slider
+/// is displayed but a general zoom info instead.
 /// 
 /// The navigation widget itself does not maintain any state. Instead, when the
 /// state changes, the widget notifies the [onChanged] callback. Usually,
 /// widgets using the navigation will listen for the [onChanged] callback and
-/// rebuild the navigation with a new [progress] value to update the visual
+/// rebuild the navigation with a new [tile] value to update the visual
 /// appearance of the navigation.
 class ComicNavigation extends StatefulWidget {
   ComicNavigation({
     @required this.show,
-    @required this.progress,
-    @required this.maxProgress,
+    @required this.tile,
+    @required this.numTiles,
     @required this.onChanged,
     @required this.onClose
   });
@@ -35,12 +35,12 @@ class ComicNavigation extends StatefulWidget {
   final bool show;
 
   /// The current progress.
-  final int progress;
-  bool get isFirst => progress <= 0.0;
-  bool get isLast => progress >= maxProgress - 1;
+  final int tile;
+  bool get isFirst => tile <= 0.0;
+  bool get isLast => tile >= numTiles - 1;
 
   /// The maximum progress.
-  final int maxProgress;
+  final int numTiles;
 
   /// Callback being called whenever the progress changes.
   final NavigationChangedCallback onChanged;
@@ -88,7 +88,7 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
     if (_previouslyShown != widget.show)
       _onVisibleChanged();
 
-    final Widget child = (widget.progress == null)
+    final Widget child = (widget.tile == null)
       ? buildGeneralContent()
       : buildProgressContent();
 
@@ -111,7 +111,7 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
   /// Builds content without specific progress.
   Widget buildGeneralContent() {
     return InkResponse(
-      onTap: () => widget.onChanged(null),
+      onTap: widget.onClose,
       radius: MediaQuery.of(context).size.width,
       highlightShape: BoxShape.rectangle,
       child: Center(
@@ -135,10 +135,10 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
         onPressed: widget.onClose,
       ),
       Slider(
-        divisions: widget.maxProgress - 1,
+        divisions: widget.numTiles - 1,
         min: 0.0,
-        max: widget.maxProgress - 1.0,
-        value: widget.progress.toDouble(),
+        max: widget.numTiles - 1.0,
+        value: widget.tile.toDouble(),
         onChanged: (val) => widget.onChanged(val.round()),
       ),
       Opacity(
@@ -147,10 +147,10 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
           icon: Icon(Icons.keyboard_arrow_left, color: primaryColor),
           onPressed: () => widget.isFirst
             ? null
-            : widget.onChanged(widget.progress - 1),
+            : widget.onChanged(widget.tile - 1),
         ),
       ),
-      Text('${widget.progress + 1} / ${widget.maxProgress}',
+      Text('${widget.tile + 1} / ${widget.numTiles}',
         style: TextStyle(
           color: primaryColor,
           fontWeight: FontWeight.w700,
@@ -164,7 +164,7 @@ class _ComicNavigationState extends State<ComicNavigation> with SingleTickerProv
         ),
         onPressed: () => widget.isLast
           ? widget.onClose()
-          : widget.onChanged(widget.progress + 1),
+          : widget.onChanged(widget.tile + 1),
       ),
     ];
 

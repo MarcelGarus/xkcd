@@ -2,7 +2,7 @@
 
 import cv2
 import numpy as np
-import math
+from sys import argv
 from utils import *
 
 WHITE = 255
@@ -10,7 +10,7 @@ BLACK = 0
 FLOODED = 100
 
 # Yields all pixels in the given area.
-def pixels(img, only_border: bool = False, left: int = 0, top: int = 0, right: int = math.inf, bottom: int = math.inf):
+def pixels(img, only_border = False, left = 0, top = 0, right = float('inf'), bottom = float('inf')):
   height, width = img.shape
   for y in range(max(0, top), min(height, bottom+1)):
     for x in range(max(0, left), min(width, right+1)):
@@ -44,7 +44,7 @@ def flood(img, x, y, from_color=WHITE, to_color=FLOODED):
 # The function returns a list of tiles as well as the number of free content
 # and the number of artifacts encountered. These metrics will allow for an
 # informed decision about whether the process is applicable to the comic.
-def detect_tiles(id: int):
+def detect_tiles(id):
   print('Comic %d: Reading image' % (id))
   img = cv2.imread(path_of_comic(id), cv2.IMREAD_GRAYSCALE)
   cv2.imshow('Comic', img)
@@ -103,10 +103,10 @@ def detect_tiles(id: int):
       print('Comic %d: Content around (%d, %d) too small (area=%d), considered free' % (id, x, y, area))
       continue
     
-    percentage_filled = count / area
+    percentage_filled = float(count) / float(area)
     if percentage_filled < 0.9:
       free_content += 1
-      print('Comic %d: Content around (%d, %d) is not rectangular (%f%% of rect is content), considered free' % (id, x, y, 100 * percentage_filled))
+      print('Comic %d: Content around (%d, %d) is not rectangular (%d pixels of %d pixels aka %f%% of rect is content), considered free' % (id, x, y, count, area, 100 * percentage_filled))
       continue
 
     tile = (left, top, right, bottom)
@@ -135,11 +135,11 @@ def detect_tiles(id: int):
 # Calls the detecter, then validates the result and saves it.
 # Returns false if the comic was not analyzed.
 # Otherwise, the validity and the comic image size is returned.
-def detect_and_save_tiles_of_comic(id):
+def detect_and_save_tiles_of_comic(id, force = False):
   if not file_exists(path_of_comic(id)):
     return False
 
-  if file_exists(path_of_detected_tiles(id)) and False: # todo
+  if file_exists(path_of_detected_tiles(id)) and not force:
     print('Comic %d\'s tiles already detected' % (id))
     return False
   
@@ -182,9 +182,15 @@ def detect_and_save_tiles_of_all_comics():
     num_comics += 1
     num_pixels += img_size
 
+  if num_comics == 0:
+    return
   print('Done. %d pixels of %d comics analyzed.' % (num_pixels, num_comics))
   print('The analysis of %d comics (%d%%) resulted in valid tiles.' % (num_valid, 100 * num_valid / num_comics))
 
 
-#detect_and_save_tiles_of_comic(1)
-detect_and_save_tiles_of_all_comics()
+if len(argv) > 1:
+  id = int(argv[1])
+  detect_and_save_tiles_of_comic(id, force = True)
+else:
+  detect_and_save_tiles_of_all_comics()
+

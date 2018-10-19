@@ -3,66 +3,126 @@ import 'package:flutter/widgets.dart';
 import 'package:rxdart/subjects.dart';
 import 'package:xkcd/comic.dart';
 
+/// The current status of zooming.
+/// 
+/// If [enabled] is [false], there is no zoom and the comic is centered. In
+/// this case, the [tile] property is ignored.
+/// If [enabled] is [true], the zoom mode is active. If [tile] is [null], the
+/// user zoomed to some ambiguous location. Otherwise, [tile] is the index of
+/// the current tile.
+@immutable
+class ZoomStatus {
+  const ZoomStatus(this.enabled, this.tile) : assert(enabled != null);
+  static final seed = ZoomStatus(false, null);
+
+  final bool enabled;
+  final int tile;
+
+  bool operator ==(Object status) {
+    return status is ZoomStatus
+      && enabled == status.enabled
+      && tile == status.tile;
+  }
+
+  String toString() => (!enabled) ? '<disabled>' : '<enabled: $tile>';
+}
+
+
+
 /// BLoC.
 class Bloc {
   /// Using this method, any widget in the tree below a BlocHolder can get
   /// access to the bloc.
   static Bloc of(BuildContext context) {
-    final BlocHolder inherited = context
-        .ancestorWidgetOfExactType(BlocHolder);
+    final BlocHolder inherited = context.ancestorWidgetOfExactType(BlocHolder);
     return inherited?.bloc;
   }
 
-  ComicLibrary comicLibrary;
-  int currentId = 6;
-  int get previousId => currentId - 1;
-  int get nextId => currentId + 1;
+  /// A library that takes care of doing work on the comics. It provides us
+  /// with everything we need.
+  ComicLibrary _comicLibrary;
 
+  /// The ID of the current comic. Setting it updates the comic interests in
+  /// the comic library.
+  int _current;
+  int get _previous => _current - 1;
+  int get _next => _current + 1;
+
+  /// Whether the zoom mode is active as well as the currently zoomed-on tile.
+  bool _zoomEnabled = false;
+  int _zoomTile;
+
+  // The streams for communicating with the UI.
   final _previousSubject = BehaviorSubject<Comic>();
   final _currentSubject = BehaviorSubject<Comic>();
   final _nextSubject = BehaviorSubject<Comic>();
+  final _zoomModeSubject = BehaviorSubject<ZoomStatus>(
+    seedValue: ZoomStatus.seed
+  );
   Stream<Comic> get previous => _previousSubject.stream.distinct();
   Stream<Comic> get current => _currentSubject.stream.distinct();
   Stream<Comic> get next => _nextSubject.stream.distinct();
+  Stream<ZoomStatus> get zoomMode => _zoomModeSubject.stream; // TODO make distinct
 
 
-  Future<void> _initialize() async {
+  /// Initializes the BLoC.
+  void _initialize() {
     print('Initializing the BLoC.');
-    comicLibrary = ComicLibrary(_onComicUpdated);
-    _onCurrentComicChanged();
+    _comicLibrary = ComicLibrary((Comic comic) {
+      (comic.id == _previous ? _previousSubject :
+       comic.id == _current ? _currentSubject :
+       comic.id == _next ? _nextSubject : null
+      )?.add(comic);
+    });
+
+    setComicState(() {
+      _current = 6;
+    });
   }
 
+  /// Disposes all the streams.
   void dispose() {
     _previousSubject.close();
     _currentSubject.close();
     _nextSubject.close();
+    _zoomModeSubject.close();
   }
 
-  void _onComicUpdated(Comic comic) {
-    //@ignore TODO
-    final BehaviorSubject subject =
-      comic.id == previousId ? _previousSubject :
-      comic.id == currentId ? _currentSubject :
-      comic.id == nextId ? _nextSubject : null;
-    subject?.add(comic);
+  /// Calls the given function, then updates the comic library's interests to
+  /// match the current comic.
+  void setComicState(Function function) {
+    function();
+    print('Setting comic library interests around $_current');
+    _comicLibrary.setInterest(_previous, 0.5);
+    _comicLibrary.setInterest(_current, 1.0);
+    _comicLibrary.setInterest(_previous, 0.5);
+    _comicLibrary.flush();
   }
 
-  void _onCurrentComicChanged() {
-    comicLibrary.setInterest(previousId, 0.5);
-    comicLibrary.setInterest(currentId, 1.0);
-    comicLibrary.setInterest(previousId, 0.5);
-    comicLibrary.flush();
+  /// Calls the given function, then adds the new zoom mode to the stream.
+  void setZoomState(Function function) {
+    function();
+    _zoomModeSubject.add(ZoomStatus(_zoomEnabled, _zoomTile));
   }
 
-  void goToNext() {
-    currentId++;
-    _onCurrentComicChanged();
-  }
+  // Go the next and previous comic.
+  void goToNextComic() => setComicState(() => _current++);
+  void goToPreviousComic() => setComicState(() => _current--);
 
-  void goToPrevious() {
-    currentId--;
-    _onCurrentComicChanged();
-  }
+  // Enter and exit the zoom mode.
+  void enterZoom({ bool focusOnFirstTile = false }) => setZoomState(() {
+    _zoomEnabled = true;
+    _zoomTile = focusOnFirstTile ? 0 : null;
+  });
+  void exitZoom() => setZoomState(() {
+    _zoomEnabled = false;
+    _zoomTile = null;
+  });
+
+  // Zoom the the next and previous tile.
+  void zoomToNextTile() => setZoomState(() => _zoomTile++);
+  void zoomToPreviousTile() => setZoomState(() => _zoomTile--);
+  void zoomToTile(int i) => setZoomState(() => _zoomTile = i);
 }
 
 class BlocProvider extends StatefulWidget {
@@ -77,10 +137,8 @@ class _BlocProviderState extends State<BlocProvider> {
   final Bloc bloc = Bloc();
 
   void initState() {
-  super.initState();
-    bloc._initialize().catchError((e) {
-      print('An error occurred when initializing the BloC: $e');
-    });
+    super.initState();
+    bloc._initialize();
   }
 
   @override
@@ -169,4 +227,3 @@ class ComicLibrary {
     callback(comic);
   }
 }
-

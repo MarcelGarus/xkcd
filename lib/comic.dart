@@ -64,6 +64,7 @@ class Comic {
 
   /// The actual image.
   final ui.Image image, inversedImage;
+  bool get imageLoaded => image != null;
 
   /// Whether the image is monochromatic.
   final bool isMonochromatic;

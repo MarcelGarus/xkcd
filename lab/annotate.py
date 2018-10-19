@@ -108,3 +108,4 @@ print("* on squiggly or non-rectangular focus areas, choose the smallest rect th
 print("  includes everything")
 annotate_all_comics()
 print('Done.')
+
