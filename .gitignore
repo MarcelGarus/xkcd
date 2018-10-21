@@ -8,11 +8,13 @@ build/
 
 .flutter-plugins
 
+.vscode/
 .idea
 .metadata
 
-lib/*.swp
-lab/*.swp
+*.swp
+*.lock
+
 lab/__pycache__/
 lab/comics/
 

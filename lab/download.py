@@ -20,7 +20,7 @@ def get_latest_id():
 def download_comic(id: int):
   comic_path = path_of_comic(id)
 
-  if file_exists(comic_path):
+  if file_exists(comic_path) or file_exists(path_of_comic(id, file_type='gif')):
     print('Comic %d already downloaded.' % (id))
     return
 
@@ -44,8 +44,8 @@ def download_comic(id: int):
   f.close()
   print('Comic %d: Download finished. Saved as %s' % (id, comic_path))
 
-  # convert image to png
-  if file_type != 'png':
+  # convert image to png except gifs (because they expand to a bunch of images)
+  elif file_type != 'png' and file_type != 'gif':
     print('Comic %d: Converting to png' % (id))
     old_comic_path = comic_path
     comic_path = path_of_comic(id)

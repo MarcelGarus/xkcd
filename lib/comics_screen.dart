@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:xkcd/bloc.dart';
 import 'package:xkcd/comic.dart';
@@ -31,7 +32,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
 
   Widget _buildTabs() {
     return StreamBuilder(
-      stream: Bloc.of(context).zoomMode,
+      stream: Bloc.of(context).zoomStatus,
       builder: (context, AsyncSnapshot<ZoomStatus> snapshot) {
         final zoomStatus = snapshot.data;
 
@@ -54,7 +55,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       stream: Bloc.of(context).current,
       builder: (context, AsyncSnapshot<Comic> comicSnapshot) {
         return StreamBuilder(
-          stream: Bloc.of(context).zoomMode,
+          stream: Bloc.of(context).zoomStatus,
           builder: (context, AsyncSnapshot<ZoomStatus> zoomSnapshot) {
             final comic = comicSnapshot.data;
             final zoomStatus = zoomSnapshot.data;
@@ -87,7 +88,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       stream: Bloc.of(context).current,
       builder: (context, AsyncSnapshot<Comic> comicSnapshot) {
         return StreamBuilder(
-          stream: Bloc.of(context).zoomMode,
+          stream: Bloc.of(context).zoomStatus,
           builder: (context, AsyncSnapshot<ZoomStatus> zoomSnapshot) {
             final comic = comicSnapshot.data;
             final zoomStatus = zoomSnapshot.data;
@@ -116,7 +117,7 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
       child: StreamBuilder(
         stream: stream,
         builder: (context, AsyncSnapshot<Comic> snapshot) {
-          print('Got a new comic from the BLoC: ${snapshot.data}');
+          //print('Got a new comic from the BLoC: ${snapshot.data}. Image is at ${snapshot.data?.image?.path}');
           return (!snapshot.hasData || snapshot.data.image == null)
             ? CircularProgressIndicator()
             : ZoomableComic(comic: snapshot.data, interactive: interactive);
@@ -135,7 +136,9 @@ class _ComicsScreenState extends State<ComicsScreen> with SingleTickerProviderSt
 
 
 class ZoomableComic extends StatefulWidget {
-  ZoomableComic({ @required this.comic, @required this.interactive });
+  ZoomableComic({ @required this.comic, @required this.interactive }) :
+    assert(comic != null),
+    super(key: Key('Comic ${comic.id}'));
 
   final Comic comic;
   final bool interactive;
@@ -148,69 +151,71 @@ class _ZoomableComicState extends State<ZoomableComic>
     with SingleTickerProviderStateMixin {
   ZoomStatus _previousZoomMode = ZoomStatus.seed;
 
-  Rect focus;
-  AnimationController focusController;
-  CurvedAnimation focusAnimation;
-  Rect beginFocus, endFocus; // Focuses for animation.
+  ui.Image _image;
+  Rect _focus;
+  AnimationController _focusController;
+  CurvedAnimation _focusAnimation;
+  Rect _beginFocus, _endFocus; // Focuses for animation.
 
   void initState() {
     super.initState();
 
     // Initialize controllers and the focus animation.
-    focusController = AnimationController(
+    _focusController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 200)
     )..addListener(() => setState(() {
-      focus = Rect.lerp(beginFocus, endFocus, focusAnimation.value ?? 0.0);
+      _focus = Rect.lerp(_beginFocus, _endFocus, _focusAnimation.value ?? 0.0);
     }));
-    focusAnimation = CurvedAnimation(
+    _focusAnimation = CurvedAnimation(
       curve: Cubic(0.3, 0.0, 0.7, 1.0),
-      parent: focusController
+      parent: _focusController
     );
 
     if (widget.interactive) {
-      Bloc.of(context).zoomMode.listen((ZoomStatus zoomMode) {
-        print('Zoom mode updated: $zoomMode (comic ${widget.comic.id} has ${widget.comic.tiles?.length} tiles)');
-
-        if (_previousZoomMode == zoomMode) return;
-        if (zoomMode.enabled && zoomMode.tile == null) return;
-
-        beginFocus = focus ?? _getWholeImageFocus(widget.comic);
-        endFocus = zoomMode.enabled
-          ? widget.comic.tiles[zoomMode.tile]
-          : _getWholeImageFocus(widget.comic);
-        focusController.reset();
-        focusController.forward();
-
-        _previousZoomMode = zoomMode;
-      });
+      Bloc.of(context).zoomStatus.listen(_onZoomStatusChanged);
     }
   }
 
+  void _onZoomStatusChanged(ZoomStatus zoomStatus) {
+    //print('Zoom mode updated: $zoomMode (comic ${widget.comic.id} has ${widget.comic.tiles?.length} tiles)');
+
+    if (_previousZoomMode == zoomStatus) return;
+    if (zoomStatus.enabled && zoomStatus.tile == null) return;
+
+    _beginFocus = _focus ?? _getWholeImageFocus();
+    _endFocus = zoomStatus.enabled && zoomStatus.tile < (widget.comic.tiles?.length ?? 0)
+      ? widget.comic.tiles[zoomStatus.tile]
+      : _getWholeImageFocus();
+    _focusController?.reset();
+    _focusController?.forward();
+
+    _previousZoomMode = zoomStatus;
+  }
+
   /// Returns the focus for the whole comic to be visible.
-  Rect _getWholeImageFocus(Comic comic) => Rect.fromLTRB(
-    0.0, 0.0, comic.image.width.toDouble(), comic.image.height.toDouble()
-  );
+  Rect _getWholeImageFocus() => (_image != null) ? Rect.fromLTRB(
+    0.0, 0.0, _image.width.toDouble(), _image.height.toDouble()
+  ) : (Offset.zero & Size(1.0, 1.0));
 
   void _onFocusMovedManually(
     Comic comic,
     ZoomStatus zoomStatus,
     Rect newFocus
   ) => setState(() {
-    focusController.stop();
-    focus = newFocus;
+    _focusController.stop();
+    _focus = newFocus;
 
     if (!zoomStatus.enabled)
       Bloc.of(context).enterZoom();
 
-    print('The new focus is $focus.');
     if (comic.tiles == null) return;
 
     // Check how visible each of the tiles is, then maybe choose the most
     // visible one as the current progress.
     final visibilities = comic.tiles.map((tile) {
       final tileArea = max(0, tile.width * tile.height);
-      final intersect = tile.intersect(focus);
+      final intersect = tile.intersect(_focus);
       final intersectArea = max(0, intersect.width * intersect.height);
       return intersectArea / tileArea;
     }).toList();
@@ -226,15 +231,26 @@ class _ZoomableComicState extends State<ZoomableComic>
   @override
   Widget build(BuildContext context) {
     return ZoomableImage(
-      image: widget.comic.image,
-      focus: widget.interactive ? focus : null,
+      image: FileImage(widget.comic.image),
+      focus: widget.interactive ? _focus : null,
       isInteractive: widget.interactive,
       backgroundColor: Colors.white,
+      onResolved: (ui.Image image) {
+        _image = image;
+      },
       onMoved: (Rect rect) {
         _onFocusMovedManually(widget.comic, _previousZoomMode, rect);
       },
       onCentered: Bloc.of(context).exitZoom
     );
+  }
+
+  @override
+  void dispose() {
+    _focusController?.stop(canceled: true);
+    _focusController?.dispose();
+    _focusController = null;
+    super.dispose();
   }
 }
 

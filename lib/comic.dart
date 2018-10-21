@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' show min;
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 /// This class holds information about a single comic and is used as a means of
 /// communication between the [Bloc] and the UI.
@@ -31,10 +32,8 @@ class Comic {
     this.news = '',
     this.transcript = '',
     this.image,
-    this.inversedImage,
-    this.isMonochromatic,
     this.tiles
-  });
+  }) : assert(id != null);
   factory Comic.create(int id) => Comic._(id: id);
 
   /// The id (provided by api).
@@ -63,23 +62,38 @@ class Comic {
 
 
   /// The actual image.
-  final ui.Image image, inversedImage;
+  final File image;
   bool get imageLoaded => image != null;
-
-  /// Whether the image is monochromatic.
-  final bool isMonochromatic;
 
   /// The tiles of the comic.
   final List<Rect> tiles;
 
 
-  /// Fetches comic from the given url.
-  Future<Comic> _fromUrl(String url) async {
+  /// Uses either the cache or the xkcd api to get the comic's metadata.
+  /// May throw.
+  Future<Comic> getMetadata() async {
     if (title != null) return this;
 
-    final jsonString = (await http.get(url)).body;
-    final data = json.decode(jsonString);
+    final String cachePath = (await getTemporaryDirectory()).path;
+    final File cache = File('$cachePath/metadata$id.txt');
+    String jsonString;
 
+    if (await cache.exists()) {
+      print('Getting comic $id\'s metadata from cache.');
+      jsonString = await cache.readAsString();
+    } else {
+      print('Fetching comic $id\'s metadata from the web.');
+      final url = 'http://xkcd.com/$id/info.0.json';
+      final response = await http.get(url);
+
+      if (response.statusCode != 200)
+        throw UnsupportedError('Request to $url failed with status code ${response.statusCode}.');
+
+      jsonString = response.body;
+      cache.writeAsString(jsonString);
+    }
+
+    final data = json.decode(jsonString);
     return this.copyWith(
       id: data['num'],
       title: data['title'],
@@ -97,49 +111,30 @@ class Comic {
     );
   }
 
-  /// Uses the xkcd api to fetch the comic with the correct [id], or the latest
-  /// comic if [id] is [null],
-  Future<Comic> fetchMetadata() async {
-    return await _fromUrl((id == null)
-      ? 'http://xkcd.com/info.0.json'
-      : 'http://xkcd.com/$id/info.0.json'
-    );
-  }
 
-  /// Loads the image provider. Instead of using [createLocalImageConfiguration],
-  /// as is the usual procedure, for now, a dummy image configuration is used,
-  /// without taking into account device pixel ratio and stuff like that.
-  Future<Comic> loadImage() async {
+  /// Downloads the image to the cache, if it's not already in there.
+  Future<Comic> downloadImage() async {
     if (this.image != null) return this;
 
-    ui.Image image;
-
-    // TODO: Should we provide an asset bundle for caching? Do we need to be
-    // careful about flushing of images?
-    final config = ImageConfiguration(
-      bundle: null,//DefaultAssetBundle.of(context),
-      devicePixelRatio: 1.0,
-      locale: null,
-      textDirection: TextDirection.ltr,
-      size: Size(100.0, 100.0),
-      platform: TargetPlatform.android,
+    final cachePath = (await getTemporaryDirectory()).path;
+    final File cache = File(
+      '$cachePath/comic$id.${imageUrl.substring(imageUrl.lastIndexOf('.') + 1)}'
     );
-    final ImageStream _imageStream = Image.network(imageUrl).image.resolve(config);
-    final Function listener = (ImageInfo info, bool synchronousCall) {
-      image = info.image;
-      return this.copyWith(image: info.image);
-    };
 
-    // Exponentially back out.
-    _imageStream.addListener(listener);
-    int ticker = 1;
-    while (image == null) {
-      await Future.delayed(Duration(milliseconds: ticker), () {});
-      ticker = min(ticker * 2, 500);
+    if (await cache.exists()) {
+      print('Getting comic $id from cache.');
+    } else {
+      print('Downloading comic $id from the internet.');
+      final response = await http.get(imageUrl);
+
+      if (response.statusCode != 200)
+        throw UnsupportedError('Request to $imageUrl failed with status code ${response.statusCode}.');
+
+      final bytes = response.bodyBytes;
+      await cache.writeAsBytes(bytes);
     }
-    _imageStream.removeListener(listener);
-
-    return this.copyWith(image: image);
+    
+    return this.copyWith(image: cache);
   }
 
 
@@ -183,17 +178,31 @@ class Comic {
   Future<Comic> detectTiles() async {
     if (this.tiles != null) return this;
 
-    String comicWithLeadingZeroes = '$id';
-    while (comicWithLeadingZeroes.length < 4)
-      comicWithLeadingZeroes = '0$comicWithLeadingZeroes';
+    final String cachePath = (await getTemporaryDirectory()).path;
+    final File cache = File('$cachePath/tiles$id.txt');
+    String tileData;
 
-    final url = 'https://github.com/marcelgarus/xkcd/blob/master/lab/tiles/$comicWithLeadingZeroes.txt?raw=true';
-    final response = await http.get(url);
-    if (response.statusCode != 200) {
-      return this.copyWith(tiles: []);
+    if (await cache.exists()) {
+      print('Getting comic $id\'s tiles from cache.');
+      tileData = await cache.readAsString();
+    } else {
+      print('Fetching comic $id\'s tiles from the web.');
+      
+      String comicWithLeadingZeroes = '$id';
+      while (comicWithLeadingZeroes.length < 4)
+        comicWithLeadingZeroes = '0$comicWithLeadingZeroes';
+
+      final url = 'https://github.com/marcelgarus/xkcd/blob/master/lab/tiles/$comicWithLeadingZeroes.txt?raw=true';
+      final response = await http.get(url);
+
+      if (response.statusCode != 200)
+        throw UnsupportedError('Request to $url failed with status code ${response.statusCode}.');
+
+      tileData = response.body;
+      cache.writeAsString(tileData);
     }
-   
-    final lines = response.body.split('\n');
+
+    final lines = tileData.split('\n');
     final tiles = <Rect>[];
 
     for (final line in lines) {
@@ -229,9 +238,7 @@ class Comic {
     String link = '',
     String news = '',
     String transcript = '',
-    ui.Image image,
-    ui.Image inversedImage,
-    bool isMonochromatic,
+    File image,
     List<Rect> tiles
   }) => Comic._(
     id: id ?? this.id,
@@ -244,8 +251,6 @@ class Comic {
     news: news ?? this.news,
     transcript: transcript ?? this.transcript,
     image: image ?? this.image,
-    inversedImage: inversedImage ?? this.inversedImage,
-    isMonochromatic: isMonochromatic ?? this.isMonochromatic,
     tiles: tiles ?? this.tiles
   );
 
@@ -261,9 +266,7 @@ class Comic {
       && link == other.link
       && news == other.news
       && transcript == other.transcript
-      && (image == null) == (other.image == null)
-      && (inversedImage == null) == (other.inversedImage == null)
-      && isMonochromatic == other.isMonochromatic
+      && image.path == other.image.path
       && tiles == other.tiles;
   }
 
@@ -279,9 +282,7 @@ class Comic {
       link,
       news,
       transcript,
-      (image == null),
-      (inversedImage == null),
-      isMonochromatic,
+      image.path,
       tiles
     );
   }

@@ -3,8 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 
-typedef OnMoveListener(Rect focus);
+typedef OnResolvedCallback(ui.Image image);
+typedef OnMoveCallback(Rect focus);
 
 /// A widget displaying a zoomable image. It can be interacted with using
 /// multitouch.
@@ -22,15 +24,17 @@ class ZoomableImage extends StatefulWidget {
     @required this.image,
     this.focus,
     this.isInteractive = false,
+    this.onResolved,
     this.onMoved,
     this.onCentered,
+    this.placeholder,
     this.backgroundColor = Colors.black,
   }) :
       assert(image != null),
       super(key: key);
 
   /// The image.
-  final ui.Image image;
+  final ImageProvider image;
 
   /// The part of the image that's currently in focus.
   final Rect focus;
@@ -39,8 +43,12 @@ class ZoomableImage extends StatefulWidget {
   final bool isInteractive;
 
   // Callbacks.
-  final OnMoveListener onMoved;
+  final OnResolvedCallback onResolved;
+  final OnMoveCallback onMoved;
   final VoidCallback onCentered;
+
+  /// A placeholder.
+  final Widget placeholder;
 
   /// A background color.
   final Color backgroundColor;
@@ -51,7 +59,10 @@ class ZoomableImage extends StatefulWidget {
 
 // See /flutter/examples/layers/widgets/gestures.dart
 class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProviderStateMixin {
-  ui.Image _previousImage;
+  ImageStream _imageStream;
+  ui.Image _image;
+  Size _previousImageSize;
+  Size _imageSize;
 
   // Buffers for the focus of the image.
   Orientation _previousOrientation;
@@ -69,24 +80,11 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
   double _scale;
 
 
-  void initState() {
-    super.initState();
-    print('Zoomable image created for image ${widget.image}.');
-  }
-
-
   /// Focuses on the part of the image that's enclosed by [focus]. If [focus]
   /// is [null], the image is scaled and position to fit in the center of the
   /// available space.
-  /// By setting [animate], one can control whether to animate to the new focus
-  /// or move there directly.
   void _focus(Rect focus, { bool notifyCallback = true }) {
-    focus = focus ?? Rect.fromLTWH(
-      0.0,
-      0.0,
-      widget.image.width.toDouble(),
-      widget.image.height.toDouble()
-    );
+    focus = focus ?? Offset.zero & (_imageSize ?? Size(1.0, 1.0));
 
     final focusSize = focus.size;
     final targetScale = math.min(
@@ -104,7 +102,7 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
   }
 
   /// Centers the image.
-  void _centerAndScaleImage({ bool notifyCallback = true }) {
+  void _center({ bool notifyCallback = true }) {
     _focus(null, notifyCallback: false);
     if (notifyCallback && widget.onCentered != null)
       widget.onCentered();
@@ -128,7 +126,7 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
     double newScale = _scale * 2;
 
     if (newScale > 2.0) {
-      _centerAndScaleImage();
+      _center();
     } else {
       // We want the new offset to be twice as far from the center in both
       // width and height than it is now.
@@ -162,10 +160,9 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
   }
 
   @override
-  Widget build(BuildContext ctx) {
+  Widget build(BuildContext context) {
     // If the image didn't load yet, display the placeholder. Otherwise, do
     // more complicated stuff in the layout builder.
-    assert(widget.image.width > 0);
     return LayoutBuilder(
       builder: (ctx, constraints) {
         // If the orientation changed, center the image and update the canvas
@@ -174,13 +171,13 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
         if (orientation != _previousOrientation) {
           _previousOrientation = orientation;
           _canvasSize = constraints.biggest;
-          _centerAndScaleImage(notifyCallback: false);
+          _center(notifyCallback: false);
         }
 
-        // If the image changed, center it.
-        if (_previousImage != widget.image) {
-          _previousImage = widget.image;
-          _centerAndScaleImage(notifyCallback: false);
+        // The image loaded, so display it centered.
+        if (_previousImageSize != _imageSize) {
+          _previousImageSize = _imageSize;
+          _center(notifyCallback: false);
         }
 
         // If the focus changed, animate to the new focus.
@@ -188,6 +185,9 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
           _previousFocus = widget.focus;
           _focus(widget.focus, notifyCallback: false);
         }
+
+        if (_image == null)
+          return widget.placeholder ?? Container();
 
         // Return the image.
         return GestureDetector(
@@ -197,7 +197,7 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
           child: CustomPaint(
             child: Container(color: widget.backgroundColor),
             foregroundPainter: _ZoomableImagePainter(
-              image: widget.image,
+              image: _image,
               offset: _offset,
               scale: _scale,
             ),
@@ -207,7 +207,7 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
     );
   }
 
-  /*@override
+  @override
   void didChangeDependencies() {
     _resolveImage();
     super.didChangeDependencies();
@@ -227,13 +227,18 @@ class _ZoomableImageState extends State<ZoomableImage> with SingleTickerProvider
 
   void _handleImageLoaded(ImageInfo info, bool synchronousCall) => setState(() {
     _image = info.image;
+    _imageSize = Size(_image.width.toDouble(), _image.height.toDouble());
+
+    if (widget.onResolved != null) {
+      widget.onResolved(_image);
+    }
   });
 
   @override
   void dispose() {
     _imageStream.removeListener(_handleImageLoaded);
     super.dispose();
-  }*/
+  }
 }
 
 /// Painter that paints the given image with the given offset and scale.

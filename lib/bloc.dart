@@ -62,7 +62,7 @@ class Bloc {
   Stream<Comic> get previous => _previousSubject.stream.distinct();
   Stream<Comic> get current => _currentSubject.stream.distinct();
   Stream<Comic> get next => _nextSubject.stream.distinct();
-  Stream<ZoomStatus> get zoomMode => _zoomModeSubject.stream; // TODO make distinct
+  Stream<ZoomStatus> get zoomStatus => _zoomModeSubject.stream; // TODO make distinct
 
 
   /// Initializes the BLoC.
@@ -95,7 +95,7 @@ class Bloc {
     print('Setting comic library interests around $_current');
     _comicLibrary.setInterest(_previous, 0.5);
     _comicLibrary.setInterest(_current, 1.0);
-    _comicLibrary.setInterest(_previous, 0.5);
+    _comicLibrary.setInterest(_next, 0.5);
     _comicLibrary.flush();
   }
 
@@ -109,7 +109,7 @@ class Bloc {
   void goToNextComic() => setComicState(() => _current++);
   void goToPreviousComic() => setComicState(() => _current--);
 
-  // Enter and exit the zoom mode.
+  // Enter and exit zoom.
   void enterZoom({ bool focusOnFirstTile = false }) => setZoomState(() {
     _zoomEnabled = true;
     _zoomTile = focusOnFirstTile ? 0 : null;
@@ -119,7 +119,7 @@ class Bloc {
     _zoomTile = null;
   });
 
-  // Zoom the the next and previous tile.
+  // Zoom in on a comic tile.
   void zoomToNextTile() => setZoomState(() => _zoomTile++);
   void zoomToPreviousTile() => setZoomState(() => _zoomTile--);
   void zoomToTile(int i) => setZoomState(() => _zoomTile = i);
@@ -181,8 +181,10 @@ class ComicLibrary {
 
   void setInterest(int id, double interest) {
     interests[id] = interest;
-    if (!comics.containsKey(id))
+    if (!comics.containsKey(id)) {
       comics[id] = Comic.create(id);
+      callback(comics[id]);
+    }
   }
 
   void flush() {
@@ -216,11 +218,11 @@ class ComicLibrary {
     callback(comic);
 
     if (interests[id] < 0.2) return;
-    comic = await comic.fetchMetadata().catchError(print);
+    comic = await comic.getMetadata().catchError(print);
     callback(comic);
 
     if (interests[id] < 0.5) return;
-    comic = await comic.loadImage().catchError(print);
+    comic = await comic.downloadImage().catchError(print);
     callback(comic);
 
     comic = await comic.detectTiles().catchError(print);
