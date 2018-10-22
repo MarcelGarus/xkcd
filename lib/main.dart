@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:xkcd/bloc.dart';
-import 'package:xkcd/comics_screen.dart';
+import 'package:xkcd/ui/comics_screen.dart';
 
 void main() => runApp(MyApp());
 

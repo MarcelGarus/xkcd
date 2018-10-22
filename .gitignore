@@ -13,6 +13,7 @@ build/
 .metadata
 
 *.swp
+
 *.lock
 
 lab/__pycache__/
